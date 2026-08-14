@@ -31,6 +31,26 @@ def main() -> None:
 
     register()
 
+    # Route the stock evaluator's hardcoded LLM calls (NL assertions, auth
+    # classification) at the same DashScope model; without this those calls
+    # fail keyless and poison whole simulations as infrastructure errors.
+    import tau2.config as tau2_config
+
+    os.environ.setdefault("OPENAI_API_KEY", args.api_key)
+    os.environ.setdefault("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    eval_model = f"openai/{args.model}"
+    tau2_config.DEFAULT_LLM_NL_ASSERTIONS = eval_model
+    tau2_config.DEFAULT_LLM_EVAL_USER_SIMULATOR = eval_model
+    # The consumers bound the constants at their own import; repoint those
+    # bindings too, or the patch above never reaches the call sites.
+    import tau2.evaluator.evaluator_nl_assertions as nl_assertions
+    import tau2.evaluator.auth_classifier as auth_classifier
+
+    if hasattr(nl_assertions, "DEFAULT_LLM_NL_ASSERTIONS"):
+        nl_assertions.DEFAULT_LLM_NL_ASSERTIONS = eval_model
+    if hasattr(auth_classifier, "DEFAULT_LLM_EVAL_USER_SIMULATOR"):
+        auth_classifier.DEFAULT_LLM_EVAL_USER_SIMULATOR = eval_model
+
     usage_dir = os.path.join(os.path.dirname(args.out), "usage")
     os.makedirs(usage_dir, exist_ok=True)
     os.makedirs(args.out, exist_ok=True)

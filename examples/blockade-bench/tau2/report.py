@@ -17,11 +17,13 @@ ARMS = ["clean", "guard"]
 
 
 def load_run(model: str, arm: str) -> list[dict]:
-    path = os.path.join(BENCH, "runs", f"{model}-{arm}", "results.json")
-    if not os.path.exists(path):
-        return []
-    data = json.load(open(path, encoding="utf-8"))
-    return [s for s in data.get("simulations", []) if isinstance(s, dict)]
+    # Prefer the merged final results (rescored + patched infra tasks).
+    for name in ("results-final.json", "updated_results.json", "results.json"):
+        path = os.path.join(BENCH, "runs", f"{model}-{arm}", name)
+        if os.path.exists(path):
+            data = json.load(open(path, encoding="utf-8"))
+            return [s for s in data.get("simulations", []) if isinstance(s, dict)]
+    return []
 
 
 def reward_of(sim: dict) -> float:
