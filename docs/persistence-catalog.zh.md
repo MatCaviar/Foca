@@ -237,6 +237,19 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 来源：[`packages/core/session/src/types.ts:273`](../packages/core/session/src/types.ts)
 
+### `blockade/*`
+
+<a id="blockadelesson--log-only"></a>
+
+#### `blockade/lesson` — log-only
+
+```ts persistence-catalog
+/** One metacognition lesson committed after a verified breakthrough. */
+'blockade/lesson': BlockadeLessonEvent
+```
+
+Source: [`packages/metacog/blockade/src/domain.ts:138`](../packages/metacog/blockade/src/domain.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>

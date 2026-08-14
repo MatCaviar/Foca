@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-blockade-guard-metacognition.md
+2026-08-14-blockade-guard-metacognition.md: c1124759198b38699c552c9d2be7984faa223d8f
+2026-08-14-blockade-guard-metacognition.zh.md: fe5d5375906bb17cb640af40d267bb152963b55e

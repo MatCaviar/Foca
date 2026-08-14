@@ -355,6 +355,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Folds revisioned objective state from the session log and keeps live continuation activation process-local.',
   },
   {
+    key: 'blockadeGuard',
+    pkg: 'blockade',
+    title: 'Blockade metacognition guard',
+    mode: 'core',
+    consumers: ['blockade-sim'],
+    note: 'Verifies declared writes through configured probes and steers agents off blocked path families; the sim worlds and policy adapter exist for keyless experiments.',
+  },
+  {
     key: 'e2b',
     pkg: 'e2b',
     title: 'E2B sandbox lifecycle owner',

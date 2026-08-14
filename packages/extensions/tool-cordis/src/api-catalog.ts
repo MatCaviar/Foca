@@ -379,6 +379,43 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'blockadeGuard',
+    summary: 'The service face: ledger registry plus the cross-session lesson store.',
+    description: 'The service face: ledger registry plus the cross-session lesson store.',
+    methods: [
+      {
+        signature: 'lessonStore(): BlockadeLessonStore',
+        description: 'The lesson store, for operators and experiment runners.',
+        parameters: [],
+        returns: 'the cross-session lesson store.',
+      },
+      {
+        signature: 'ledgerOf(agent: Agent): AgentLedger',
+        description: 'One agent\'s ledger; read-only introspection for tests and reports.',
+        parameters: [{ name: 'agent', description: 'the live agent owning the ledger.' }],
+        returns: 'the agent\'s attempt ledger.',
+      },
+      {
+        signature: 'familyOf(tool: string): FamilyEntry | undefined',
+        description: 'First family row matching a tool name, or undefined for transparent tools.',
+        parameters: [{ name: 'tool', description: 'the tool name to resolve.' }],
+        returns: 'the first matching family row, or undefined when unmapped.',
+      },
+      {
+        signature: 'probesFor(tool: string): readonly ProbeEntry[]',
+        description: 'Every probe row whose write patterns match a tool name.',
+        parameters: [{ name: 'tool', description: 'the write tool name to resolve.' }],
+        returns: 'every probe row mapped to the tool.',
+      },
+      {
+        signature: 'async verifyWrite(exec: ToolExecution): Promise<readonly Evidence[]>',
+        description: 'Run every probe mapped to one settled write call and collect graded evidence. A probe error contributes an observation without agreement.',
+        parameters: [{ name: 'exec', description: 'the settled write execution to verify.' }],
+        returns: 'the graded evidence from every mapped probe.',
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index tap.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index tap. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -2630,6 +2667,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AgentHandle {\n    agent: Agent;\n    dispose(): Promise<void>;\n}',
   },
   {
+    name: 'AgentLedger',
+    declaration: 'export class AgentLedger {\n    record(attempt: AttemptRecord): void;\n    attempts(): readonly AttemptRecord[];\n    failuresIn(family: string): number;\n    familySwallowed(family: string): boolean;\n    anySwallowed(): boolean;\n    exhaust(family: string): void;\n    isExhausted(family: string): boolean;\n    reframeDue(family: string, limit: number): boolean;\n    shouldFire(kind: DirectiveKind, scope: string): boolean;\n    needsDualPath(): boolean;\n    needsLessonRecall(): boolean;\n    failedFamilies(): Map<string, {\n        familyClass: FamilyClass;\n        swallowed: boolean;\n    }>;\n    verdicts(): readonly (AttemptRecord[\'verdict\'])[];\n}',
+  },
+  {
     name: 'AgentOptions',
     declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    maxTokens?: number;\n}',
   },
@@ -2664,6 +2705,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ApprovalService',
     declaration: 'export class ApprovalService extends Service {\n    static Config: z<Config>;\n    constructor(ctx: Context, public config: Config);\n    setPolicy(agent: Agent, policy: ApprovalPolicy): void;\n    async request(req: ApprovalRequest): Promise<ApprovalOutcome>;\n    overrideOf(session: Session): ApprovalPolicy | undefined;\n}',
+  },
+  {
+    name: 'ArgumentMapping',
+    declaration: 'export interface ArgumentMapping {\n    probe: string;\n    write: string;\n}',
   },
   {
     name: 'AskUserQuestionAnswer',
@@ -2714,6 +2759,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AttemptRecord',
+    declaration: 'export interface AttemptRecord {\n    readonly tool: string;\n    readonly family: string;\n    readonly familyClass: FamilyClass;\n    readonly pathClass: PathClass;\n    readonly declaredOk: boolean;\n    readonly verdict: Verdict;\n    readonly failureForm: FailureForm | undefined;\n    readonly ruling: VerdictRuling | undefined;\n}',
+  },
+  {
     name: 'BackendRegistry',
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
@@ -2728,6 +2777,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BashEnvVariableInfo',
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
+  },
+  {
+    name: 'BlockadeLessonStore',
+    declaration: 'export class BlockadeLessonStore {\n    record(lesson: Lesson): boolean;\n    all(): readonly Lesson[];\n    relevantTo(classes: readonly FamilyClass[]): readonly Lesson[];\n    static render(lessons: readonly Lesson[]): string;\n}',
   },
   {
     name: 'Branded',
@@ -2930,6 +2983,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DiffResultView {\n    card: \'diff\';\n    title?: string;\n    diffs: FileDiff[];\n}',
   },
   {
+    name: 'DirectiveKind',
+    declaration: 'export type DirectiveKind = \'p1_dual_path\' | \'p2_fake_success\' | \'p3_unverified\' | \'p4_identity_grid\' | \'p5_reframe\' | \'p6_lesson_recall\' | \'target_missing\' | \'escalation_forbidden\';',
+  },
+  {
     name: 'DirectoryPickerBrowseCapability',
     declaration: 'export interface DirectoryPickerBrowseCapability {\n    kind: \'browse\';\n    list(path?: string, signal?: AbortSignal): Promise<DirectoryListing>;\n    createDirectory(path: string, name: string): Promise<string>;\n}',
   },
@@ -3028,6 +3085,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'Evidence',
+    declaration: 'export interface Evidence {\n    readonly probe: string;\n    readonly independence: Independence;\n    readonly agrees?: boolean;\n    readonly observed: string;\n}',
+  },
+  {
+    name: 'FailureForm',
+    declaration: 'export type FailureForm = \'explicit_denial\' | \'silent_swallow\' | \'target_missing\' | \'declared_error_other\';',
+  },
+  {
+    name: 'FamilyClass',
+    declaration: 'export type FamilyClass = \'direct_write\' | \'user_equivalent_input\' | \'official_entry\' | \'privilege_shift\' | \'env_setup\';',
+  },
+  {
+    name: 'FamilyEntry',
+    declaration: 'export interface FamilyEntry {\n    tools: string[];\n    family: string;\n    familyClass: FamilyClass;\n    pathClass: PathClass;\n}',
   },
   {
     name: 'FileDiff',
@@ -3158,6 +3231,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type InboxTarget = \'next-turn\' | \'next-step\';',
   },
   {
+    name: 'Independence',
+    declaration: 'export type Independence = \'actuator_store\' | \'independent\' | \'ground_truth\';',
+  },
+  {
     name: 'InvariantFailure',
     declaration: 'export type InvariantFailure = (message: string) => never;',
   },
@@ -3260,6 +3337,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'KvUnitDescriptor',
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n}',
+  },
+  {
+    name: 'Lesson',
+    declaration: 'export interface Lesson {\n    readonly avoidClasses: readonly FamilyClass[];\n    readonly workedClass: FamilyClass;\n    readonly forms: readonly FailureForm[];\n    readonly summary: string;\n}',
   },
   {
     name: 'LlmAdapter',
@@ -3474,6 +3555,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'PathClass',
+    declaration: 'export type PathClass = \'A_direct\' | \'B_user_equivalent\' | \'C_identity_shift\' | \'D_reverse_engineer\';',
+  },
+  {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
@@ -3512,6 +3597,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreToolDecision',
     declaration: 'export type PreToolDecision = {\n    kind: \'allow\';\n} | {\n    kind: \'deny\';\n    reason: string;\n} | {\n    kind: \'ask\';\n    reason?: string;\n};',
+  },
+  {
+    name: 'ProbeEntry',
+    declaration: 'export interface ProbeEntry {\n    writes: string[];\n    tool: string;\n    independence: Independence;\n    argumentMap: ArgumentMapping[];\n}',
   },
   {
     name: 'ProjectionChangeListener',
@@ -4528,6 +4617,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UserQuestionProvider',
     declaration: 'export interface UserQuestionProvider {\n    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>;\n}',
+  },
+  {
+    name: 'Verdict',
+    declaration: 'export type Verdict = \'verified_success\' | \'fake_success\' | \'declared_failure\' | \'unverified\';',
+  },
+  {
+    name: 'VerdictRuling',
+    declaration: 'export interface VerdictRuling {\n    readonly verdict: Verdict;\n    readonly evidences: readonly Evidence[];\n}',
   },
   {
     name: 'WebBootEntry',

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/metacog/blockade-sim/README.md
+README.md: dfcb4dd3bed43e546ca242fab306ef1bd7e02259
+README.zh.md: 10f1d7d8a3f8679e8db918c33016365a76fbcd8e

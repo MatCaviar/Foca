@@ -1,0 +1,92 @@
+- insert:
+    - id: blockade-sim
+      name: '@deepseek-ai/dsh-blockade-sim'
+    - id: blockade-guard
+      name: '@deepseek-ai/dsh-blockade'
+      config:
+        families:
+          - tools: ['car_audio_adjust_volume', 'car_hvac_set', 'car_media_next']
+            family: std-api
+            familyClass: direct_write
+            pathClass: A_direct
+          - tools: ['car_input_keyevent']
+            family: user-input
+            familyClass: user_equivalent_input
+            pathClass: B_user_equivalent
+          - tools: ['car_set_mic_vocal', 'car_set_sound_stage']
+            family: vendor-aidl
+            familyClass: official_entry
+            pathClass: A_direct
+          - tools: ['car_setup_adbd_socket']
+            family: env-setup
+            familyClass: env_setup
+            pathClass: A_direct
+          - tools: ['car_su_exec']
+            family: escalation
+            familyClass: privilege_shift
+            pathClass: A_direct
+          - tools: ['web_rest_put_profile', 'web_rest_patch_profile', 'web_graphql_mutate_profile', 'web_admin_set_maintenance']
+            family: rest-api
+            familyClass: direct_write
+            pathClass: A_direct
+          - tools: ['web_ui_form_save']
+            family: ui-form
+            familyClass: official_entry
+            pathClass: B_user_equivalent
+          - tools: ['web_issue_service_token']
+            family: env-setup
+            familyClass: env_setup
+            pathClass: A_direct
+          - tools: ['fs_write_file', 'fs_write_atomic']
+            family: fs-write
+            familyClass: direct_write
+            pathClass: A_direct
+          - tools: ['fs_configctl_import']
+            family: config-service
+            familyClass: official_entry
+            pathClass: B_user_equivalent
+        probes:
+          - writes: ['car_audio_adjust_volume']
+            tool: car_get_volume
+            independence: independent
+            argumentMap: [{ probe: expectVolume, write: volume }]
+          - writes: ['car_input_keyevent']
+            tool: car_get_volume
+            independence: independent
+            argumentMap: [{ probe: expectVolume, write: targetVolume }]
+          - writes: ['car_hvac_set']
+            tool: car_get_hvac
+            independence: independent
+            argumentMap: [{ probe: expectTemperature, write: temperature }]
+          - writes: ['car_media_next']
+            tool: car_get_media
+            independence: independent
+            argumentMap: [{ probe: expectTrackIndex, write: targetTrackIndex }]
+          - writes: ['car_set_sound_stage']
+            tool: car_imaudio_service_get
+            independence: actuator_store
+            argumentMap: [{ probe: expectSoundStage, write: mode }]
+          - writes: ['car_set_sound_stage']
+            tool: car_dsp_dump
+            independence: ground_truth
+            argumentMap: [{ probe: expectMode, write: mode }]
+          - writes: ['car_set_mic_vocal']
+            tool: car_imaudio_service_get
+            independence: actuator_store
+            argumentMap: [{ probe: expectMicVocal, write: level }]
+          - writes: ['car_set_mic_vocal']
+            tool: car_audio_policy_dump
+            independence: independent
+            argumentMap: [{ probe: expectMicVocal, write: level }]
+          - writes: ['web_ui_form_save']
+            tool: web_public_profile_read
+            independence: independent
+            argumentMap: [{ probe: expectDisplayName, write: displayName }]
+          - writes: ['web_admin_set_maintenance']
+            tool: web_public_status_read
+            independence: ground_truth
+            argumentMap: [{ probe: expectMaintenance, write: enabled }]
+          - writes: ['fs_write_file', 'fs_write_atomic', 'fs_configctl_import']
+            tool: fs_read_after_sync
+            independence: ground_truth
+            argumentMap: [{ probe: expectContent, write: content }]

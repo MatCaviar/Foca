@@ -387,6 +387,127 @@ Depends on: [`LocalConfig`](#deepseek-aidsh-bash-local)
 
 Source: [`packages/shell/bash-sandbox/src/index.ts:35`](../packages/shell/bash-sandbox/src/index.ts)
 
+<a id="deepseek-aidsh-blockade"></a>
+
+## `@deepseek-ai/dsh-blockade`
+
+Requires: `tools`
+
+```ts config-catalog
+/** Plugin configuration: family and probe mappings plus per-protocol switches. */
+export interface Config {
+  /** Same-family failures before the reframe trigger fires (default 3). */
+  familyFailureLimit?: number
+  /** `advisory` injects contexts only; `enforce` also blocks/denies (default `advisory`). */
+  mode?: 'advisory' | 'enforce'
+  /** Tool-to-family mappings; unmapped tools run transparent. */
+  families?: FamilyEntry[]
+  /** Write-to-probe mappings powering truth rulings. */
+  probes?: ProbeEntry[]
+  /** Per-protocol switches; every ablation flips exactly one. */
+  protocols?: ProtocolSwitches
+}
+
+/** One family mapping row: which tools belong to one semantic family. */
+export interface FamilyEntry {
+  /** `*`-wildcard tool-name patterns; first matching row wins. */
+  tools: string[]
+  /** Semantic family id shared by the mapped tools. */
+  family: string
+  /** Cross-domain family class used for lesson transfer. */
+  familyClass: FamilyClass
+  /** Path semantic (direct call, user-equivalent, identity shift, reverse). */
+  pathClass: PathClass
+}
+
+/**
+ * One probe mapping row. The probe tool must accept the mapped arguments and
+ * return a JSON value with an optional boolean `agrees` plus an `observed`
+ * account; an erroring probe contributes uncommitted evidence only.
+ */
+export interface ProbeEntry {
+  /** `*`-wildcard patterns over write tool names this probe verifies. */
+  writes: string[]
+  /** The probe tool invoked to verify a matched write. */
+  tool: string
+  /** Independence grade of the channel this probe provides. */
+  independence: Independence
+  /** probe argument name → write-call argument name, as explicit pairs. */
+  argumentMap: ArgumentMapping[]
+}
+
+/** Per-protocol switches; every ablation flips exactly one. */
+export interface ProtocolSwitches {
+  /** Protocol 1: dual-path enumeration directive on the first direct-path failure. */
+  dualPath?: boolean
+  /** Protocols 2+3: probe-verified truth rulings and their steering. */
+  truthSource?: boolean
+  /** Protocol 4: identity-grid directive on explicit denials. */
+  identityGrid?: boolean
+  /** Protocol 5: reframe trigger at the family failure limit. */
+  reframe?: boolean
+  /** Protocol 6: lesson commit on breakthroughs and recall at session start. */
+  lessons?: boolean
+  /** Protocol 2 guard: forbid escalation after a swallowed write. */
+  escalationGuard?: boolean
+}
+
+/**
+ * Cross-domain abstraction over concrete tool families. Lessons transfer at
+ * this level, not at the tool level: "a swallowed direct write" means the
+ * same thing on a car head unit, a web backend, and a managed filesystem.
+ */
+export type FamilyClass =
+  | 'direct_write'
+  | 'user_equivalent_input'
+  | 'official_entry'
+  | 'privilege_shift'
+  | 'env_setup'
+
+/** Semantic role of one tool-call path family member (protocol 1). */
+export type PathClass =
+  | 'A_direct'
+  | 'B_user_equivalent'
+  | 'C_identity_shift'
+  | 'D_reverse_engineer'
+
+/**
+ * Independence grade of one verification channel. An actuator-store readback
+ * shares state with the writer and can confirm it while the real effect is
+ * absent — the recorded failure that motivated the grade.
+ */
+export type Independence = 'actuator_store' | 'independent' | 'ground_truth'
+
+/** One probe-argument to write-argument mapping pair. */
+export interface ArgumentMapping {
+  /** The argument name the probe tool accepts. */
+  probe: string
+  /** The argument name on the verified write call. */
+  write: string
+}
+```
+
+Source: [`packages/metacog/blockade/src/index.ts:122`](../packages/metacog/blockade/src/index.ts)
+
+<a id="deepseek-aidsh-blockade-sim"></a>
+
+## `@deepseek-ai/dsh-blockade-sim`
+
+Requires: `tools`
+
+```ts config-catalog
+/** Plugin configuration: which simulated worlds to mount. */
+export interface Config {
+  /** Which worlds to mount (default: all three). */
+  worlds?: WorldId[]
+}
+
+/** Which simulated world a scenario runs in. */
+export type WorldId = 'car' | 'web' | 'fs'
+```
+
+Source: [`packages/metacog/blockade-sim/src/index.ts:17`](../packages/metacog/blockade-sim/src/index.ts)
+
 <a id="deepseek-aidsh-client-connection"></a>
 
 ## `@deepseek-ai/dsh-client-connection`

@@ -243,6 +243,7 @@
         "./packages/feedback/*/src",
         "./packages/schedule/*/src",
         "./packages/guard/*/src",
+        "./packages/metacog/*/src",
         "./packages/plan/*/src",
         "./packages/preset/*/src",
         "./packages/subagent/*/src",
