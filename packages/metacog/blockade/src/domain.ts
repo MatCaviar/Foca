@@ -151,6 +151,13 @@ export function directiveMarker(kind: DirectiveKind): string {
   return `${DIRECTIVE_MARKER}${kind}]`
 }
 
+/**
+ * Deployment-provided directive text overrides: same decision rules, same
+ * marker, domain-adapted instruction wording. A missing key falls back to the
+ * built-in text.
+ */
+export type DirectiveOverrides = Partial<Record<DirectiveKind, string>>
+
 /** Identity-dimension grid offered by protocol 4 when a call is explicitly denied. */
 export const IDENTITY_GRID: readonly string[] = [
   'current process identity (the uid/groups the call runs as right now)',
@@ -192,4 +199,20 @@ export function directiveText(kind: DirectiveKind, detail: string): string {
     case 'escalation_forbidden':
       return `${marker} This call escalates privileges after a write in the same family was silently swallowed. That is the forbidden default: a policy-swallowed write cannot be repaired by more privilege. Route the effort to a different path family instead. ${detail}`
   }
+}
+
+/**
+ * Resolve one directive's full text with optional deployment overrides. An
+ * override replaces the fixed instruction wording but keeps the stable marker
+ * prefix and the situation-specific detail suffix, so logs and scripted
+ * policies keep working across deployments.
+ * @param kind - the directive kind.
+ * @param detail - the situation-specific account appended to the text.
+ * @param overrides - deployment-provided texts keyed by kind.
+ * @returns the complete model-facing directive text.
+ */
+export function resolveDirective(kind: DirectiveKind, detail: string, overrides?: DirectiveOverrides): string {
+  const custom = overrides?.[kind]
+  if (custom !== undefined) return `${directiveMarker(kind)} ${custom} ${detail}`
+  return directiveText(kind, detail)
 }

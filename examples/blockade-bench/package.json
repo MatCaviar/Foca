@@ -1,0 +1,7 @@
+{
+  "name": "blockade-bench-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Public-benchmark integration: tau2-bench agent backend on the DeepSeek Harness loop, clean arm versus blockade-guard arm"
+}

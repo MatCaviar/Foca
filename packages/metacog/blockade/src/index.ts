@@ -44,13 +44,15 @@ import type {
   Independence,
   PathClass,
 } from './domain.ts'
-import { directiveText } from './domain.ts'
+import { resolveDirective } from './domain.ts'
+import type { DirectiveOverrides } from './domain.ts'
 import { AgentLedger, LedgerRegistry, extractLesson } from './ledger.ts'
 import { BlockadeLessonStore } from './lessons.ts'
 
 export type {
   AttemptRecord,
   DirectiveKind,
+  DirectiveOverrides,
   Evidence,
   FailureForm,
   FamilyClass,
@@ -61,7 +63,7 @@ export type {
   Verdict,
   VerdictRuling,
 } from './domain.ts'
-export { directiveMarker, directiveText } from './domain.ts'
+export { directiveMarker, directiveText, resolveDirective } from './domain.ts'
 export { classifyFailure, composeVerdict } from './classify.ts'
 export { AgentLedger, extractLesson } from './ledger.ts'
 export { BlockadeLessonStore } from './lessons.ts'
@@ -130,7 +132,11 @@ export interface Config {
   probes?: ProbeEntry[]
   /** Per-protocol switches; every ablation flips exactly one. */
   protocols?: ProtocolSwitches
+  /** Deployment-adapted directive texts keyed by kind; unset kinds use the built-ins. */
+  directives?: DirectiveOverrides
 }
+
+const directiveKeys = z.union(['p1_dual_path', 'p2_fake_success', 'p3_unverified', 'p4_identity_grid', 'p5_reframe', 'p6_lesson_recall', 'target_missing', 'escalation_forbidden'] as const)
 
 export const Config: z<Config> = z.object({
   familyFailureLimit: z.natural().min(1).default(3),
@@ -155,6 +161,9 @@ export const Config: z<Config> = z.object({
     lessons: z.boolean().default(true),
     escalationGuard: z.boolean().default(true),
   }).default({ dualPath: true, truthSource: true, identityGrid: true, reframe: true, lessons: true, escalationGuard: true }),
+  // Cast per the reasoningEfforts precedent: schemastery types a dict's keys
+  // as required, while the runtime contract is a partial record.
+  directives: z.dict(z.string(), directiveKeys) as unknown as z<DirectiveOverrides>,
 })
 
 /** Resolved plugin configuration after schemastery defaults. */
@@ -164,6 +173,7 @@ export interface ResolvedConfig {
   readonly families: readonly FamilyEntry[]
   readonly probes: readonly ProbeEntry[]
   readonly protocols: Required<ProtocolSwitches>
+  readonly directives: DirectiveOverrides
 }
 
 const FAMILY_CLASSES: readonly FamilyClass[] = ['direct_write', 'user_equivalent_input', 'official_entry', 'privilege_shift', 'env_setup']
@@ -325,9 +335,9 @@ function compileFirstMatch(patterns: readonly string[]): RegExp {
   }).join('|')})`)
 }
 
-function directiveMessage(kind: DirectiveKind, detail: string, summary: string): UserMessage {
+function directiveMessage(kind: DirectiveKind, detail: string, summary: string, overrides: DirectiveOverrides): UserMessage {
   return createUserMessage({
-    content: [{ type: 'text', text: directiveText(kind, detail) }],
+    content: [{ type: 'text', text: resolveDirective(kind, detail, overrides) }],
     source: {
       kind: GUARD_SOURCE_KIND,
       plugin: GUARD_PLUGIN_NAME,
@@ -356,8 +366,11 @@ export function apply(ctx: Context, config: Config): void {
       lessons: config.protocols?.lessons ?? true,
       escalationGuard: config.protocols?.escalationGuard ?? true,
     },
+    directives: config.directives ?? {},
   }
   validateConfig(options)
+  const directive = (kind: DirectiveKind, detail: string, summary: string): UserMessage =>
+    directiveMessage(kind, detail, summary, options.directives)
   const guard = new BlockadeGuard(ctx, options)
   const { protocols } = options
 
@@ -370,7 +383,7 @@ export function apply(ctx: Context, config: Config): void {
     const relevant = ledger.relevantTo(classes)
     if (relevant.length === 0) return
     if (!guard.ledgerOf(agent).needsLessonRecall()) return
-    agent.inject(directiveMessage('p6_lesson_recall', BlockadeLessonStore.render(relevant), `recall: ${relevant.length} lessons`))
+    agent.inject(directive('p6_lesson_recall', BlockadeLessonStore.render(relevant), `recall: ${relevant.length} lessons`))
   })
 
   // Protocol 2, enforce half of the escalation guard: deny a privilege-shift
@@ -443,7 +456,7 @@ export function apply(ctx: Context, config: Config): void {
         .map(evidence => `${evidence.probe} (${evidence.independence}) observed ${evidence.observed}`)
         .join('; ')
       if (ledger.shouldFire('p2_fake_success', mapping.family)) {
-        contexts.push(directiveMessage(
+        contexts.push(directive(
           'p2_fake_success',
           `Tool ${exec.name} claimed success. ${evidenceDetail}`,
           `fake success in ${mapping.family}`,
@@ -454,7 +467,7 @@ export function apply(ctx: Context, config: Config): void {
       }
     } else if (verdict === 'unverified' && protocols.truthSource) {
       if (ledger.shouldFire('p3_unverified', exec.name)) {
-        contexts.push(directiveMessage(
+        contexts.push(directive(
           'p3_unverified',
           `Tool ${exec.name} claimed success and no independent channel confirms the effect.`,
           `unverified: ${exec.name}`,
@@ -462,7 +475,7 @@ export function apply(ctx: Context, config: Config): void {
       }
     } else if (failureForm === 'explicit_denial') {
       if (protocols.identityGrid && ledger.shouldFire('p4_identity_grid', mapping.family)) {
-        contexts.push(directiveMessage(
+        contexts.push(directive(
           'p4_identity_grid',
           `Tool ${exec.name} was denied: ${renderText(result.content)}`,
           `denial grid: ${exec.name}`,
@@ -470,7 +483,7 @@ export function apply(ctx: Context, config: Config): void {
       }
     } else if (failureForm === 'target_missing') {
       if (ledger.shouldFire('target_missing', mapping.family)) {
-        contexts.push(directiveMessage(
+        contexts.push(directive(
           'p5_reframe',
           `Tool ${exec.name} reports the target itself is not exposed. Recovering the contract needs reverse engineering or an operator decision; enumerate what interfaces exist before more attempts.`,
           `target missing: ${exec.name}`,
@@ -482,14 +495,14 @@ export function apply(ctx: Context, config: Config): void {
       if (protocols.reframe && ledger.reframeDue(mapping.family, options.familyFailureLimit)) {
         ledger.exhaust(mapping.family)
         if (ledger.shouldFire('p5_reframe', mapping.family)) {
-          contexts.push(directiveMessage(
+          contexts.push(directive(
             'p5_reframe',
             `Family ${mapping.family} (${mapping.familyClass}) has ${ledger.failuresIn(mapping.family)} failed attempts.`,
             `reframe: ${mapping.family} × ${ledger.failuresIn(mapping.family)}`,
           ))
         }
       } else if (protocols.dualPath && mapping.pathClass === 'A_direct' && ledger.needsDualPath()) {
-        contexts.push(directiveMessage(
+        contexts.push(directive(
           'p1_dual_path',
           `First direct-invocation failure: ${exec.name}.`,
           'dual-path enumeration',
@@ -501,7 +514,7 @@ export function apply(ctx: Context, config: Config): void {
     // default after a swallow.
     if (mapping.familyClass === 'privilege_shift' && protocols.escalationGuard && ledger.anySwallowed()) {
       if (ledger.shouldFire('escalation_forbidden', mapping.family)) {
-        contexts.push(directiveMessage(
+        contexts.push(directive(
           'escalation_forbidden',
           `Tool ${exec.name} escalates privileges while a swallowed write is unresolved.`,
           `escalation reflex: ${exec.name}`,
