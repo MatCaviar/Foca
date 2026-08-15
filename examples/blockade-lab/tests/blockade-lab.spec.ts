@@ -187,8 +187,8 @@ describe('blockade lab: baseline vs steered vs ablations vs transfer', () => {
     expect(run.outcome).toBe('false_success')
   })
 
-  it('ablation: identity grid off restores mechanism 2 (terminal misattribution)', async () => {
-    const lab = await boot(true, { protocols: { identityGrid: false } })
+  it('ablation: carrier search + identity grid off restores mechanism 2 (terminal misattribution)', async () => {
+    const lab = await boot(true, { protocols: { carrierSearch: false, identityGrid: false } })
     const run = await runScenario(lab, byId('web_maintenance'), 'compliant', 'ablate-identity')
     results.push(run)
     expect(run.outcome).toBe('gave_up_env_limit')

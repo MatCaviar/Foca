@@ -88,7 +88,10 @@ class DshAgent(HalfDuplexAgent[None]):
         env = os.environ.copy()
         env.setdefault("DASHSCOPE_API_KEY", self.llm_args.get("api_key", ""))
         env.setdefault(
-            "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            "DASHSCOPE_BASE_URL",
+            self.llm_args.get(
+                "api_base", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            ),
         )
         stderr_path = self.llm_args.get("bridge_stderr")
         stderr = open(stderr_path, "w", encoding="utf-8") if stderr_path else subprocess.DEVNULL
@@ -120,7 +123,7 @@ class DshAgent(HalfDuplexAgent[None]):
                 "sessionId": f"tau2-{self.task_id}-{uuid.uuid4().hex[:8]}",
                 "system": self.system_prompt,
                 "tools": serialized,
-                "guard": bool(self.llm_args.get("guard", False)),
+                "guard": self.llm_args.get("guard", False),
                 "model": self.llm,
             }
         )

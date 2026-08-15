@@ -66,7 +66,7 @@ def run_state(model: str, arm: str) -> tuple[int, float, int, int]:
 def main() -> None:
     print(f"{'run':<28}{'sims':>5}{'avgR':>7}{'agent-in':>12}{'agent-out':>11}{'user-in':>12}{'user-out':>11}")
     totals: dict[str, int] = {}
-    for model in ["qwen3.7-max", "qwen3.6-flash"]:
+    for model in ["qwen3.7-max", "qwen3.6-flash", "deepseek-v4-flash"]:
         for arm in ["clean", "guard"]:
             n_tasks, a_in, a_out = harness_usage(model, arm)
             sims, avg, u_in, u_out = run_state(model, arm)

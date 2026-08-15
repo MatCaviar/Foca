@@ -110,6 +110,8 @@ export interface ProtocolSwitches {
   dualPath?: boolean
   /** Protocols 2+3: probe-verified truth rulings and their steering. */
   truthSource?: boolean
+  /** Capability-carrier search on denials and swallowed writes. */
+  carrierSearch?: boolean
   /** Protocol 4: identity-grid directive on explicit denials. */
   identityGrid?: boolean
   /** Protocol 5: reframe trigger at the family failure limit. */
@@ -136,7 +138,7 @@ export interface Config {
   directives?: DirectiveOverrides
 }
 
-const directiveKeys = z.union(['p1_dual_path', 'p2_fake_success', 'p3_unverified', 'p4_identity_grid', 'p5_reframe', 'p6_lesson_recall', 'target_missing', 'escalation_forbidden'] as const)
+const directiveKeys = z.union(['p1_dual_path', 'p2_fake_success', 'carrier_search', 'p3_unverified', 'p4_identity_grid', 'p5_reframe', 'p6_lesson_recall', 'target_missing', 'escalation_forbidden'] as const)
 
 export const Config: z<Config> = z.object({
   familyFailureLimit: z.natural().min(1).default(3),
@@ -156,11 +158,20 @@ export const Config: z<Config> = z.object({
   protocols: z.object({
     dualPath: z.boolean().default(true),
     truthSource: z.boolean().default(true),
+    carrierSearch: z.boolean().default(true),
     identityGrid: z.boolean().default(true),
     reframe: z.boolean().default(true),
     lessons: z.boolean().default(true),
     escalationGuard: z.boolean().default(true),
-  }).default({ dualPath: true, truthSource: true, identityGrid: true, reframe: true, lessons: true, escalationGuard: true }),
+  }).default({
+    dualPath: true,
+    truthSource: true,
+    carrierSearch: true,
+    identityGrid: true,
+    reframe: true,
+    lessons: true,
+    escalationGuard: true,
+  }),
   // Cast per the reasoningEfforts precedent: schemastery types a dict's keys
   // as required, while the runtime contract is a partial record.
   directives: z.dict(z.string(), directiveKeys) as unknown as z<DirectiveOverrides>,
@@ -335,7 +346,7 @@ function compileFirstMatch(patterns: readonly string[]): RegExp {
   }).join('|')})`)
 }
 
-function directiveMessage(kind: DirectiveKind, detail: string, summary: string, overrides: DirectiveOverrides): UserMessage {
+function directiveMessage(kind: DirectiveKind, detail: string, summary: string, overrides: DirectiveOverrides = {}): UserMessage {
   return createUserMessage({
     content: [{ type: 'text', text: resolveDirective(kind, detail, overrides) }],
     source: {
@@ -361,6 +372,7 @@ export function apply(ctx: Context, config: Config): void {
     protocols: {
       dualPath: config.protocols?.dualPath ?? true,
       truthSource: config.protocols?.truthSource ?? true,
+      carrierSearch: config.protocols?.carrierSearch ?? true,
       identityGrid: config.protocols?.identityGrid ?? true,
       reframe: config.protocols?.reframe ?? true,
       lessons: config.protocols?.lessons ?? true,
@@ -455,6 +467,13 @@ export function apply(ctx: Context, config: Config): void {
       const evidenceDetail = (ruling?.evidences ?? [])
         .map(evidence => `${evidence.probe} (${evidence.independence}) observed ${evidence.observed}`)
         .join('; ')
+      if (protocols.carrierSearch && ledger.shouldFire('carrier_search', mapping.family)) {
+        contexts.push(directiveMessage(
+          'carrier_search',
+          `Tool ${exec.name} claimed success but the effect is absent — the direct executor path is dead.`,
+          `carrier search: ${exec.name}`,
+        ))
+      }
       if (ledger.shouldFire('p2_fake_success', mapping.family)) {
         contexts.push(directive(
           'p2_fake_success',
@@ -474,6 +493,13 @@ export function apply(ctx: Context, config: Config): void {
         ))
       }
     } else if (failureForm === 'explicit_denial') {
+      if (protocols.carrierSearch && ledger.shouldFire('carrier_search', `denial:${mapping.family}`)) {
+        contexts.push(directiveMessage(
+          'carrier_search',
+          `Tool ${exec.name} was denied — the current executor lacks this capability.`,
+          `carrier search: ${exec.name}`,
+        ))
+      }
       if (protocols.identityGrid && ledger.shouldFire('p4_identity_grid', mapping.family)) {
         contexts.push(directive(
           'p4_identity_grid',

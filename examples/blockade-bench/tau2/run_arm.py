@@ -24,9 +24,14 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
-    parser.add_argument("--arm", choices=["clean", "guard"], required=True)
+    parser.add_argument("--arm", choices=["clean", "guard", "guard-lite"], required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--api-key", default=os.environ.get("DASHSCOPE_API_KEY", ""))
+    parser.add_argument(
+        "--api-base",
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        help="OpenAI-compatible base URL for both the bridge and the user simulator",
+    )
     args, extra = parser.parse_known_args()
 
     register()
@@ -37,7 +42,7 @@ def main() -> None:
     import tau2.config as tau2_config
 
     os.environ.setdefault("OPENAI_API_KEY", args.api_key)
-    os.environ.setdefault("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    os.environ.setdefault("OPENAI_BASE_URL", args.api_base)
     eval_model = f"openai/{args.model}"
     tau2_config.DEFAULT_LLM_NL_ASSERTIONS = eval_model
     tau2_config.DEFAULT_LLM_EVAL_USER_SIMULATOR = eval_model
@@ -56,16 +61,17 @@ def main() -> None:
     os.makedirs(args.out, exist_ok=True)
     agent_args = json.dumps(
         {
-            "guard": args.arm == "guard",
+            "guard": False if args.arm == "clean" else (True if args.arm == "guard" else "lite"),
             "repo": REPO,
             "api_key": args.api_key,
+            "api_base": args.api_base,
             "usage_file": os.path.join(usage_dir, f"{args.model}-{args.arm}.jsonl"),
             "bridge_stderr": os.path.join(args.out, "bridge.stderr.log"),
         }
     )
     user_args = json.dumps(
         {
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "api_base": args.api_base,
             "api_key": args.api_key,
         }
     )

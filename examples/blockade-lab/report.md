@@ -41,12 +41,14 @@ The shared-store web and fs runs receive the `p6_lesson_recall` directive at ses
 
 ```text
 call 1: ok — SUCCESS: adjustVolume returned SUCCESS (requested 23)
+  ⟵ directive carrier_search
   ⟵ directive p2_fake_success
 call 2: ERROR — Error: SecurityException: injecting input events requires the input group (INJECT_EVENTS i
+  ⟵ directive carrier_search
   ⟵ directive p4_identity_grid
 call 3: ok — chmod 666 /dev/socket/adbd done; local adb can now reach the shell identity (uid 2000, gid
   ⟵ directive p3_unverified
 call 4: ok — injected VOLUME_DOWN × 2 as shell
 ```
 
-Directives fired: p2_fake_success, p4_identity_grid, p3_unverified
+Directives fired: carrier_search, p2_fake_success, carrier_search, p4_identity_grid, p3_unverified

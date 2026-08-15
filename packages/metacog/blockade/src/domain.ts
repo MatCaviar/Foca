@@ -58,6 +58,7 @@ export type Independence = 'actuator_store' | 'independent' | 'ground_truth'
 export type DirectiveKind =
   | 'p1_dual_path'
   | 'p2_fake_success'
+  | 'carrier_search'
   | 'p3_unverified'
   | 'p4_identity_grid'
   | 'p5_reframe'
@@ -186,6 +187,8 @@ export function directiveText(kind: DirectiveKind, detail: string): string {
       return `${marker} A direct-invocation path just failed. Before the next attempt, enumerate BOTH path lists, in writing: (A) direct invocation alternatives (APIs, functions, protocols) AND (B) user-equivalent paths — the operations a human user performs on this system to get the same effect (physical keys and controls, standard entry points, official importers, commands a user could run). A plan without a path-B entry is incomplete; do not proceed until both exist. ${detail}`
     case 'p2_fake_success':
       return `${marker} The tool reported success, but independent verification contradicts it: this write was silently swallowed by a policy layer. Two fixed rules follow. (1) Do NOT retry this path or any variant of it — the success is fake, deeper attempts in the same family cannot change that. (2) Do NOT escalate privileges — escalation cannot repair a swallowed write and is the classic wrong default here. Switch to a semantically different path family, starting with the user-equivalent path from your dual-path enumeration. ${detail}`
+    case 'carrier_search':
+      return `${marker} The current executor cannot perform this action. Do not retry it or escalate privileges — search for a CAPABILITY CARRIER instead: who in this system can ALREADY do this (the user, a system UI entry, a daemon, an existing service, a diagnostic tool, a scheduler, a browser, a CLI, another application, a remote worker)? Then find the cheapest controllable trigger channel from where you are to that carrier, and fire the action through it. You are searching for the causal path that produces the target world-state, not for an API to call. ${detail}`
     case 'p3_unverified':
       return `${marker} The tool reported success, but no independent channel confirms the effect, so the outcome is UNVERIFIED — not success. Before relying on it, verify through a channel that does not share state with the writer: a different service's readback, system logs, a second API, or a physical/ground-truth observation. If no such channel exists, report the result as unverified rather than successful. ${detail}`
     case 'p4_identity_grid':

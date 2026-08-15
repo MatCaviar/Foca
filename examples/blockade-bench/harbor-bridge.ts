@@ -1,24 +1,13 @@
 /**
- * Tau2 bridge: runs one DeepSeek Harness agent loop as the agent backend of
- * the official τ²-bench orchestrator over a stdio JSON-line protocol.
+ * Harbor bridge: the same stdio JSON protocol as the tau2 bridge, exposed as
+ * a general agent-loop bridge for harbor/Terminal-Bench. Tool calls park
+ * until the harbor-side environment executes them; every real result flows
+ * back through the harness pipeline where the Reframe guard observes it.
  *
- * The harness owns the model loop; every τ² tool is registered with a parked
- * execute whose promise resolves when the orchestrator (the single writer of
- * environment state) supplies the real result. Tool results therefore flow
- * through the harness tool pipeline, where the blockade guard observes them.
- *
- * Protocol (one JSON object per line):
- * - in  `start`  {sessionId, system, tools:[{name,description,parameters}], guard, model}
- * - in  `user`   {text}                              — next user turn
- * - in  `toolResult` {callId, output, isError}       — orchestrator-executed result
- * - in  `stop`   {}                                  — terminate
- * - out `ready`  {}
- * - out `toolCalls` {calls:[{callId,name,arguments}], usage:{input,output}}
- * - out `final`  {text, usage:{input,output}}
- * - out `error`  {message}
- *
- * Usage is the cumulative harness-side token count (input+output) of this
- * session, reported on every emission for accounting.
+ * The tool surface is fixed (run_command/read_file/write_file/list_dir) and
+ * the guard families map command-style tools with write semantics
+ * (write_file, run_command with mutation verbs) so P5/O3 logic applies to
+ * terminal work; guard config: full or lite profiles from GUARD_PROFILE.
  * @module @deepseek-ai/dsh-blockade-bench
  */
 
@@ -49,88 +38,48 @@ interface StartMessage {
   readonly sessionId: string
   readonly system: string
   readonly tools: readonly BridgeToolSpec[]
-  readonly guard: boolean
+  readonly guard: boolean | 'lite'
   readonly model: string
 }
 
-interface UserMessageIn {
-  readonly type: 'user'
-  readonly text: string
-}
-
-interface ToolResultIn {
-  readonly type: 'toolResult'
-  readonly callId: string
-  readonly output: string
-  readonly isError: boolean
-}
-
-type InMessage = StartMessage | UserMessageIn | ToolResultIn | { readonly type: 'stop' }
+type InMessage =
+  | StartMessage
+  | { readonly type: 'user'; readonly text: string }
+  | { readonly type: 'toolResult'; readonly callId: string; readonly output: string; readonly isError: boolean }
+  | { readonly type: 'stop' }
 
 function emit(value: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify(value)}\n`)
 }
 
 /**
- * Domain-adapted directive texts for τ² retail: the same decision rules
- * (verify state instead of assuming, stop retrying policy-denied variants,
- * read back writes before reporting them) phrased for a customer-service
- * policy domain.
+ * Reframe directives adapted for terminal work: the carrier vocabulary maps
+ * to "who can already do this in the system" (package managers, existing
+ * scripts, git, system services), and P5 to stopping doomed command families.
  */
-const TAU2_DIRECTIVES = {
-  carrier_search: 'The current executor cannot perform this action. Do not retry it unchanged or escalate: search for the CAPABILITY CARRIER — who can already do this within policy (a permitted alternative action, another routable service like a human agent, an authentication step that unlocks it, a state change that enables it)? Verify order/user state with a read, find the cheapest compliant trigger, and go through it.',
-  p1_dual_path: 'A direct action just failed. Before the next attempt: (1) identify the exact policy constraint or state condition that rejected it, (2) verify the current order/user state with a read call instead of assuming, and only then (3) choose a policy-compliant variant, an alternative permitted action, or an honest explanation to the user.',
-  p3_unverified: 'This write succeeded, but nothing independently confirms the resulting state. Before telling the user it is done, verify by reading the current state (for example get_order_details / get_user_details); do not describe the change as complete until you have read it back.',
-  p5_reframe: 'Multiple attempts in one action family have failed. Stop retrying variants of the same approach. Re-check whether the policy actually permits this action in the current state — verify with read calls, and if the action is genuinely policy-gated, tell the user clearly what cannot be done and proceed with what is allowed.',
+const TERMINAL_DIRECTIVES = {
+  carrier_search: 'The current approach cannot achieve this (command denied, missing tool, or the change had no effect). Do not retry it unchanged or escalate privileges. Search for the CAPABILITY CARRIER — what already in this system can do this: an installed tool or package, an existing script or service, git, a scheduler, a different interpreter or entrypoint? Find the cheapest controllable trigger and go through it. Search for the causal path to the target state, not for the command you first thought of.',
+  p1_dual_path: 'A direct approach just failed. Before the next command, enumerate in parallel: (A) corrected direct routes (fix flags, paths, dependencies), (B) user-equivalent routes — how would the system achieve this effect itself (config reload, service restart, package hook, git workflow)? Pick the cheapest verifiable one.',
+  p3_unverified: 'Several changes were made without verification. Before claiming completion, verify the real effect: run the test suite, re-read the changed file, or check the service state. Do not report success without evidence.',
+  p5_reframe: 'Multiple attempts in one command family have failed. Stop iterating variants. Re-derive the goal from the task description, inspect the actual state (files, logs, versions) instead of assuming, and choose a structurally different approach — or document precisely what blocks completion.',
 } as const
 
-/**
- * O1 capability-adaptive profile: GUARD_PROFILE=lite mounts only the two
- * failure-driven essentials in compressed form, for models the full set
- * crowds out; full keeps every protocol.
- */
-const TAU2_LITE_DIRECTIVES = {
-  carrier_search: 'That action was rejected by policy or state. Do not retry it unchanged. Find the carrier that can already do this: check the exact condition that failed (policy rule, order state, authentication), verify state with a read, then satisfy it, use a permitted alternative, or tell the user what cannot be done.',
-  p5_reframe: 'Repeated failures on the same approach. Stop; re-check the policy condition and the actual order/user state with a read, then proceed compliantly — or state clearly what cannot be done.',
-} as const
-
-function tau2GuardConfig(): BlockadeGuard.Config {
-  const lite = process.env.GUARD_PROFILE === 'lite'
-  const base: BlockadeGuard.Config = {
-    families: [
-      {
-        tools: ['cancel_pending_order', 'exchange_delivered_order_items', 'modify_pending_order_address', 'modify_pending_order_items', 'modify_pending_order_payment', 'modify_user_address', 'return_delivered_order_items'],
-        family: 'order-write',
-        familyClass: 'direct_write',
-        pathClass: 'A_direct',
-      },
-      {
-        tools: ['transfer_to_human_agents'],
-        family: 'human-escalation',
-        familyClass: 'user_equivalent_input',
-        pathClass: 'B_user_equivalent',
-      },
-      {
-        tools: ['authenticate_user', 'send_verification_code'],
-        family: 'auth',
-        familyClass: 'env_setup',
-        pathClass: 'A_direct',
-      },
-    ],
-    directives: lite ? TAU2_LITE_DIRECTIVES : TAU2_DIRECTIVES,
-    ...lite ? {
-      protocols: {
-        dualPath: false,
-        truthSource: false,
-        carrierSearch: true,
-        identityGrid: false,
-        reframe: true,
-        lessons: false,
-        escalationGuard: false,
-      },
-    } : {},
-  }
-  return base
+const TERMINAL_GUARD_CONFIG: BlockadeGuard.Config = {
+  families: [
+    {
+      tools: ['run_command'],
+      family: 'shell',
+      familyClass: 'direct_write',
+      pathClass: 'A_direct',
+    },
+    {
+      tools: ['write_file'],
+      family: 'file-write',
+      familyClass: 'direct_write',
+      pathClass: 'A_direct',
+    },
+  ],
+  directives: TERMINAL_DIRECTIVES,
 }
 
 interface Parked {
@@ -139,22 +88,13 @@ interface Parked {
 }
 
 class BridgeSession {
-  private readonly ctx: Context
-  private readonly agent: Agent
   private readonly parked = new Map<string, Parked>()
   private inputTokens = 0
   private outputTokens = 0
-  private idleWatcher: (() => void) | undefined
+  private usageCursor = 0
 
-  constructor(ctx: Context, agent: Agent) {
-    this.ctx = ctx
-    this.agent = agent
-  }
+  constructor(private readonly ctx: Context, private readonly agent: Agent) {}
 
-  /**
-   * Cumulative harness token usage of this session. Each `assistant/message`
-   * event carries its request's usage; new messages are folded in on read.
-   */
   usage(): { input: number; output: number } {
     const events = [...this.agent.session.events]
     while (this.usageCursor < events.length) {
@@ -170,9 +110,6 @@ class BridgeSession {
     return { input: this.inputTokens, output: this.outputTokens }
   }
 
-  private usageCursor = 0
-
-  /** Run one user turn; resolves when the agent goes idle again. */
   async userTurn(text: string): Promise<void> {
     this.agent.followup(createUserMessage({
       content: [{ type: 'text', text }],
@@ -181,19 +118,17 @@ class BridgeSession {
     await this.waitIdle()
   }
 
-  /** Resolve a parked tool execution; the loop resumes inside the open turn. */
   resolveTool(callId: string, output: string, isError: boolean): void {
     const parked = this.parked.get(callId)
     if (parked === undefined) return
     this.parked.delete(callId)
     if (isError) {
-      parked.reject(new Error(output.length > 0 ? output : 'tool call failed'))
+      parked.reject(new Error(output.length > 0 ? output.slice(0, 8000) : 'tool call failed'))
     } else {
       parked.resolve({ result: output })
     }
   }
 
-  /** The final assistant text of the (now idle) turn. */
   finalText(): string {
     let text = ''
     for (const event of this.agent.session.events) {
@@ -216,11 +151,9 @@ class BridgeSession {
       const dispose = this.ctx.on('agent/status', ({ agent, status }) => {
         if (agent === this.agent && status === 'idle') done()
       })
-      // Defensive: an already-idle handle (no waking work) must not hang.
       const timer = setTimeout(() => {
         if (this.agent.status === 'idle') done()
       }, 50)
-      this.idleWatcher = done
     })
   }
 
@@ -259,8 +192,6 @@ class BridgeSession {
 
 async function boot(start: StartMessage): Promise<BridgeSession> {
   const ctx = new Context()
-  // Benchmark fidelity: the model sees exactly the tau2 system prompt, with
-  // no harness identity or runtime-context additions.
   await mountAgentLoopTestDependencies(ctx, {
     systemPrompt: {
       persona: start.system,
@@ -281,8 +212,25 @@ async function boot(start: StartMessage): Promise<BridgeSession> {
     },
   })
   await ctx.plugin(AgentLoop, { agents: [] })
-  if (start.guard) {
-    await ctx.plugin(BlockadeGuard, tau2GuardConfig())
+  if (start.guard === true) {
+    await ctx.plugin(BlockadeGuard, TERMINAL_GUARD_CONFIG)
+  } else if (start.guard === 'lite') {
+    await ctx.plugin(BlockadeGuard, {
+      ...TERMINAL_GUARD_CONFIG,
+      protocols: {
+        carrierSearch: true,
+        dualPath: false,
+        truthSource: false,
+        identityGrid: false,
+        reframe: true,
+        lessons: false,
+        escalationGuard: true,
+      },
+      directives: {
+        carrier_search: 'That approach failed (denied, missing, or no effect). Do not retry it unchanged. Find what already works in this system — another tool, an existing script or service, a different route — and go through it.',
+        p5_reframe: 'Repeated failures on the same approach. Stop; inspect the actual state (files/logs/versions), re-derive the goal, and choose a structurally different approach — or document what blocks completion.',
+      },
+    })
   }
   const agent = ctx.agentLoop.create(SessionId(start.sessionId), { provider: 'dashscope', model: start.model })
   const session = new BridgeSession(ctx, agent)

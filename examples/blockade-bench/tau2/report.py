@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 
 BENCH = r"D:\AgenticSyS\bench"
-MODELS = ["qwen3.7-max", "qwen3.6-flash"]
+MODELS = ["qwen3.7-max", "qwen3.6-flash", "deepseek-v4-flash"]
 ARMS = ["clean", "guard"]
 
 

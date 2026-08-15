@@ -17,7 +17,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BENCH = r"D:\AgenticSyS\bench"
-MODELS = ["qwen3.7-max", "qwen3.6-flash"]
+MODELS = ["qwen3.7-max", "qwen3.6-flash", "deepseek-v4-flash"]
 ARMS = ["clean", "guard"]
 
 
@@ -30,10 +30,19 @@ def infra_task_ids(run_dir: str) -> list[str]:
     ]
 
 
+API_ROUTES = {
+    "deepseek-v4-flash": ("https://api.deepseek.com/v1", "REDACTED-DEEPSEEK-KEY"),
+}
+
+
 def run_patch(model: str, arm: str, ids: list[str]) -> None:
     out = os.path.join(BENCH, "runs", f"{model}-{arm}-patch")
+    api_base, api_key = API_ROUTES.get(
+        model, ("https://dashscope.aliyuncs.com/compatible-mode/v1", "REDACTED-DASHSCOPE-KEY")
+    )
     env = os.environ.copy()
-    env["DASHSCOPE_API_KEY"] = "REDACTED-DASHSCOPE-KEY"
+    env["DASHSCOPE_API_KEY"] = api_key
+    env["DASHSCOPE_BASE_URL"] = api_base
     env["PYTHONUNBUFFERED"] = "1"
     log = open(os.path.join(BENCH, "logs", f"{model}-{arm}-patch.log"), "w", encoding="utf-8")
     code = subprocess.call(
@@ -44,6 +53,8 @@ def run_patch(model: str, arm: str, ids: list[str]) -> None:
             model,
             "--arm",
             arm,
+            "--api-base",
+            api_base,
             "--out",
             out,
             "--task-ids",
@@ -86,6 +97,17 @@ def main() -> None:
     for model in MODELS:
         for arm in ARMS:
             run_dir = os.path.join(BENCH, "runs", f"{model}-{arm}")
+            final_path = os.path.join(run_dir, "results-final.json")
+            if os.path.exists(final_path):
+                final = json.load(open(final_path, encoding="utf-8"))
+                remaining = sum(
+                    1
+                    for s in final.get("simulations", [])
+                    if s.get("termination_reason") == "infrastructure_error"
+                )
+                if remaining == 0:
+                    print(f"{model}-{arm}: already final, skipping", flush=True)
+                    continue
             ids = infra_task_ids(run_dir)
             print(f"{model}-{arm}: infra tasks {ids}", flush=True)
             if not args.skip_runs and ids:
