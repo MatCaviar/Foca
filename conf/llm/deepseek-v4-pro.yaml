@@ -1,0 +1,14 @@
+# conf/llm/deepseek-v4-pro.yaml - deepseek-v4-pro Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "deepseek-v4-pro"
+base_url: "https://api.deepseek.com"
+api_key: "REDACTED-DEEPSEEK-KEY"
+async_client: true
+max_tokens: 64000
+max_context_length: 262144
+
+sensitive_keywords: []

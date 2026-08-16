@@ -1,0 +1,12 @@
+# conf/llm/glm-4.yaml - glm-4.7 Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "glm-4.7"
+base_url: "https://open.bigmodel.cn/api/paas/v4"
+api_key: "REDACTED-BIGMODEL-KEY-2"
+async_client: true
+max_tokens: 8192
+max_context_length: 128000

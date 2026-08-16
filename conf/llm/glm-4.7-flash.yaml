@@ -1,0 +1,15 @@
+# conf/llm/glm-4.7-flash.yaml - glm-4.7-flash Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "glm"
+model_name: "glm-4.7-flash"
+base_url: "https://open.bigmodel.cn/api/paas/v4"
+api_key: "REDACTED-BIGMODEL-KEY-1"
+async_client: true
+max_tokens: 32000 #16384
+max_context_length: 131072
+
+sensitive_keywords:
+

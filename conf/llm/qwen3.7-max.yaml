@@ -1,0 +1,14 @@
+# conf/llm/qwen3.7-max.yaml - qwen3.7-max Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "qwen3.7-max"
+base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key: "REDACTED-DASHSCOPE-KEY"
+async_client: true
+max_tokens: 64000
+max_context_length: 262144
+
+sensitive_keywords: []

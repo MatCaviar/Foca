@@ -1,0 +1,26 @@
+# conf/llm/glm-4.yaml - GLM-4.7 Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "glm-4.7"
+# base_url: "https://open.bigmodel.cn/api/paas/v4"
+# api_key: "REDACTED-BIGMODEL-KEY-2"
+base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key: "REDACTED-SILICONFLOW-KEY"
+async_client: true
+temperature: 0.7
+top_p: 0.95
+max_tokens: 32000 #16384
+repetition_penalty: 1.05
+max_context_length: 262144
+
+# Sensitive keywords that trigger content inspection errors
+# These keywords will be removed from messages before sending to LLM
+# You can also use environment variable: SENSITIVE_KEYWORDS="关键词1,关键词2,关键词3"
+sensitive_keywords:
+  # - "敏感词1"
+  # - "敏感词2"
+  # - "敏感词3"
+

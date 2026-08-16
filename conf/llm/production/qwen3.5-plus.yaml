@@ -1,0 +1,17 @@
+# conf/llm/qwen3.5-plus.yaml - Qwen3.5 Plus Configuration via DashScope
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "qwen3.5-plus"
+base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key: "REDACTED-SILICONFLOW-KEY"
+async_client: true
+temperature: 0.7
+top_p: 0.95
+max_tokens: 64000
+repetition_penalty: 1.05
+max_context_length: 262144
+
+sensitive_keywords: []

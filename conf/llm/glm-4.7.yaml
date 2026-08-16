@@ -1,0 +1,15 @@
+# conf/llm/glm-4.7.yaml - glm-4.7 Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "glm-4.7"
+base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key: "REDACTED-DASHSCOPE-KEY"
+async_client: true
+max_tokens: 32000 #16384
+max_context_length: 262144
+
+sensitive_keywords:
+

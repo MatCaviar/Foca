@@ -111,11 +111,13 @@ class BridgeSession {
   }
 
   async userTurn(text: string): Promise<void> {
+    console.error(`[bridge] userTurn: ${text.slice(0, 60)}...`)
     this.agent.followup(createUserMessage({
       content: [{ type: 'text', text }],
       source: { kind: 'user' },
     }))
     await this.waitIdle()
+    console.error(`[bridge] turn complete, events: ${this.agent.session.events.length}`)
   }
 
   resolveTool(callId: string, output: string, isError: boolean): void {
@@ -233,6 +235,10 @@ async function boot(start: StartMessage): Promise<BridgeSession> {
     })
   }
   const agent = ctx.agentLoop.create(SessionId(start.sessionId), { provider: 'dashscope', model: start.model })
+  // Log model request failures for debugging
+  ctx.on('agent/request-error', ({ failure }) => {
+    console.error(`[model-error] ${JSON.stringify(failure).slice(0, 300)}`)
+  })
   const session = new BridgeSession(ctx, agent)
   session.registerTools(start.tools)
   return session
@@ -255,6 +261,13 @@ async function main(): Promise<void> {
     }
     void (async () => {
       try {
+        if (message.type === ('credentials' as never)) {
+          const cred = message as unknown as { apiKey: string; apiBase: string }
+          process.env.DASHSCOPE_API_KEY = cred.apiKey
+          process.env.DASHSCOPE_BASE_URL = cred.apiBase
+          emit({ type: 'credentials_ack' })
+          return
+        }
         if (message.type === 'start') {
           session = await boot(message)
           emit({ type: 'ready' })

@@ -31,7 +31,7 @@ import { directiveMarker } from '@deepseek-ai/dsh-blockade'
 interface ChatMessage {
   role?: string
   content?: unknown
-  tool_calls?: Array<{ id?: string, function?: { name?: string } }>
+  tool_calls?: Array<{ id?: string; function?: { name?: string } }>
   tool_call_id?: string
 }
 
@@ -53,7 +53,7 @@ interface Conversation {
 
 const conversations = new Map<string, Conversation>()
 
-function conversationKey(body: { model?: string, messages?: ChatMessage[] }): string {
+function conversationKey(body: { model?: string; messages?: ChatMessage[] }): string {
   const messages = body.messages ?? []
   const system = messages[0]?.role === 'system' ? JSON.stringify(messages[0]?.content) : ''
   const firstUser = messages.find(message => message.role === 'user')
@@ -94,7 +94,7 @@ function analyze(messages: ChatMessage[]): ToolOutcome[] {
     let form: ToolOutcome['form'] = 'success'
     let isError = false
     try {
-      const parsed = JSON.parse(raw) as { error?: { code?: number, message?: string } }
+      const parsed = JSON.parse(raw) as { error?: { code?: number; message?: string } }
       if (parsed?.error !== undefined) {
         isError = true
         const code = parsed.error.code
@@ -111,7 +111,7 @@ function analyze(messages: ChatMessage[]): ToolOutcome[] {
 }
 
 /** Decide at most one directive for this request from the ledger + outcomes. */
-function steer(conversation: Conversation, outcomes: ToolOutcome[]): { kind: DirectiveKind, text: string } | undefined {
+function steer(conversation: Conversation, outcomes: ToolOutcome[]): { kind: DirectiveKind; text: string } | undefined {
   const { ledger } = conversation
   for (const outcome of outcomes) {
     if (!outcome.isError) {
@@ -145,14 +145,14 @@ function handler(request: http.IncomingMessage, response: http.ServerResponse): 
   request.on('data', (chunk: Buffer) => chunks.push(chunk))
   request.on('end', () => {
     const bodyText = Buffer.concat(chunks).toString('utf-8')
-    let body: { model?: string, messages?: ChatMessage[], stream?: boolean } & Record<string, unknown> = {}
+    let body: { model?: string; messages?: ChatMessage[]; stream?: boolean } & Record<string, unknown> = {}
     try {
       body = JSON.parse(bodyText)
     } catch { /* passthrough */ }
 
     let outgoing = bodyText
     if (process.env.GUARD_DEBUG !== undefined && Array.isArray(body.messages)) {
-      const tail = body.messages.slice(-3).map(m => {
+      const tail = body.messages.slice(-3).map((m) => {
         const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
         return `${m.role ?? '?'}:${text.slice(0, 40).replaceAll('\n', ' ')}`
       })

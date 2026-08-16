@@ -1,0 +1,17 @@
+# conf/llm/qwen3.5-9b-siliconflow.yaml - Qwen3.5-9B via SiliconFlow
+# E6 LLM Backbone Sensitivity experiment: small open-weight model
+
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "Qwen/Qwen3.5-9B"
+base_url: "https://api.siliconflow.cn/v1"
+api_key: "REDACTED-ALIYUNCS-KEY"
+async_client: true
+max_tokens: 8192
+max_context_length: 131072
+thinking_mode: "disabled"  # SiliconFlow enables thinking by default; disable for standard completions
+
+sensitive_keywords: []

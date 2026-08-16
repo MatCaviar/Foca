@@ -1,0 +1,15 @@
+# conf/llm/qwen3.5-27b-siliconflow.yaml - Qwen3.5-27B via SiliconFlow
+
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "Qwen/Qwen3.5-27B"
+base_url: "https://api.siliconflow.cn/v1"
+api_key: "REDACTED-ALIYUNCS-KEY"
+async_client: true
+max_tokens: 32768
+max_context_length: 131072
+
+sensitive_keywords: []

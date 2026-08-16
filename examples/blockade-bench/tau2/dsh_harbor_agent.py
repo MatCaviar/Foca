@@ -71,24 +71,25 @@ class DshHarborAgent(BaseAgent):
     def _ensure_bridge(self, guard: object) -> None:
         if self.proc is not None:
             return
-        env = os.environ.copy()
-        env["DASHSCOPE_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY", "")
-        env["DASHSCOPE_BASE_URL"] = os.environ.get("DASHSCOPE_BASE_URL", "")
         stderr_path = os.path.join(str(self.logs_dir), "bridge.stderr.log")
-        # WSL -> Windows interop: run node.exe with Windows cwd via cmd shim.
-        # Windows paths in args need backslash escaping from the WSL side.
+        NODE = "/mnt/c/Program Files/nodejs/node.exe"
         self.proc = subprocess.Popen(
-            ["node.exe", "--import", "tsx/esm", BRIDGE],
+            [NODE, "--import", "tsx/esm", BRIDGE],
             cwd="/mnt/d/AgenticSyS/deepseek-harness",
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=open(stderr_path, "w", encoding="utf-8"),
-            env=env,
             text=True,
             encoding="utf-8",
             bufsize=1,
         )
         threading.Thread(target=self._reader, daemon=True).start()
+        # Send credentials first — env vars don't propagate WSL→Windows reliably
+        self._send({
+            "type": "credentials",
+            "apiKey": os.environ.get("DASHSCOPE_API_KEY", ""),
+            "apiBase": os.environ.get("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        })
         self._send(
             {
                 "type": "start",
@@ -136,9 +137,13 @@ class DshHarborAgent(BaseAgent):
                     },
                 ],
                 "guard": guard,
-                "model": self.model_name or "qwen3.7-max",
+                "model": (self.model_name or "qwen3.7-max").replace("openai/", "").replace("anthropic/", ""),
             }
         )
+        # Wait for credentials_ack, then send start and wait for ready
+        ack = self._next()
+        if ack.get("type") != "credentials_ack":
+            raise RuntimeError(f"bridge credentials failed: {ack}")
         ready = self._next()
         if ready.get("type") != "ready":
             raise RuntimeError(f"bridge failed: {ready}")
@@ -167,6 +172,7 @@ class DshHarborAgent(BaseAgent):
     # -- tool execution against the harbor environment ------------------------
 
     async def _execute_tool(self, name: str, args: dict) -> tuple[str, bool]:
+        self.logger.info(f"tool_call: {name} args={str(args)[:100]}")
         assert self.environment is not None
         if name == "run_command":
             result = await self.environment.exec(args["command"], timeout_sec=600)
@@ -202,14 +208,24 @@ class DshHarborAgent(BaseAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
+        import traceback
+        self.logger.info(f"DshAgent.run() called, instruction={instruction[:80]}...")
         self.environment = environment
         guard = os.environ.get("DSH_GUARD", "off")  # off | full | lite
-        self._ensure_bridge(True if guard == "full" else ("lite" if guard == "lite" else False))
+        try:
+            self._ensure_bridge(True if guard == "full" else ("lite" if guard == "lite" else False))
+            self.logger.info(f"bridge started, guard={guard}")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.logger.error("bridge start failed: " + str(e) + " | " + tb[-300:])
+            context.metadata = {"error": "bridge_start: " + str(e)}
+            return
         self._send({"type": "user", "text": instruction})
         turns = 0
         while turns < MAX_TURNS:
             turns += 1
             event = self._next()
+            self.logger.info(f"bridge event: {event.get('type')} usage={event.get('usage', {})}")
             usage = event.get("usage") or {}
             self.usage["input"] = max(self.usage["input"], usage.get("input", 0))
             self.usage["output"] = max(self.usage["output"], usage.get("output", 0))
@@ -220,13 +236,17 @@ class DshHarborAgent(BaseAgent):
                 continue
             if event["type"] == "final":
                 text = event.get("text", "")
-                context.info = {
+                self.logger.info(f"final text ({len(text)} chars): {text[:200]}")
+                context.n_input_tokens = self.usage["input"]
+                context.n_output_tokens = self.usage["output"]
+                context.metadata = {
                     "task_completed": "TASK_COMPLETE" in text,
                     "task_impossible": "TASK_IMPOSSIBLE" in text,
                     "final_message": text[:2000],
-                    "usage": dict(self.usage),
                     "guard": guard,
                 }
                 return
             raise RuntimeError(f"bridge error: {event.get('message', event)}")
-        context.info = {"task_completed": False, "final_message": "step budget exhausted", "usage": dict(self.usage)}
+        context.n_input_tokens = self.usage["input"]
+        context.n_output_tokens = self.usage["output"]
+        context.metadata = {"task_completed": False, "final_message": "step budget exhausted"}

@@ -1,0 +1,14 @@
+# conf/llm/glm-5.1.yaml - glm-5.1 Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "glm-5.1"
+base_url: "https://open.bigmodel.cn/api/paas/v4"
+api_key: "REDACTED-BIGMODEL-KEY-3"
+async_client: true
+max_tokens: 64000  # Increased for market dimension which generates longer content
+max_context_length: 262144
+
+sensitive_keywords: []

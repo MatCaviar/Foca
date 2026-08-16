@@ -1,0 +1,14 @@
+# conf/llm/deepseek-v4-flash.yaml - deepseek-v4-flash Configuration
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "deepseek-v4-flash"
+base_url: "https://api.deepseek.com"
+api_key: "REDACTED-DEEPSEEK-KEY"
+async_client: true
+max_tokens: 8000
+max_context_length: 262144
+
+sensitive_keywords: []
