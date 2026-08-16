@@ -4,8 +4,8 @@
 export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PYTHONPATH=/opt/dsh-agent
 
-DASHSCOPE_KEY=REDACTED-DASHSCOPE-KEY
-DEEPSEEK_KEY=REDACTED-DEEPSEEK-KEY
+DASHSCOPE_KEY="${DASHSCOPE_API_KEY:?export DASHSCOPE_API_KEY first}"
+DEEPSEEK_KEY="${DEEPSEEK_API_KEY:?export DEEPSEEK_API_KEY first}"
 DEEPSEEK_BASE=https://api.deepseek.com/v1
 
 mkdir -p /root/bench-logs

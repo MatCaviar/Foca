@@ -17,9 +17,9 @@ REPO = r"D:\AgenticSyS\deepseek-harness"
 RUNNER = os.path.join(BENCH, "automationbench")
 
 MODELS = [
-    ("qwen3.7-max", "https://dashscope.aliyuncs.com/compatible-mode/v1", "REDACTED-DASHSCOPE-KEY"),
-    ("qwen3.6-flash", "https://dashscope.aliyuncs.com/compatible-mode/v1", "REDACTED-DASHSCOPE-KEY"),
-    ("deepseek-v4-flash", "https://api.deepseek.com/v1", "REDACTED-DEEPSEEK-KEY"),
+    ("qwen3.7-max", "https://dashscope.aliyuncs.com/compatible-mode/v1", "${DASHSCOPE_API_KEY:?}"),
+    ("qwen3.6-flash", "https://dashscope.aliyuncs.com/compatible-mode/v1", "${DASHSCOPE_API_KEY:?}"),
+    ("deepseek-v4-flash", "https://api.deepseek.com/v1", "${DEEPSEEK_API_KEY:?}"),
 ]
 
 DOMAIN = os.environ.get("AB_DOMAIN", "sales")

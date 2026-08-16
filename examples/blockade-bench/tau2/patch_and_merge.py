@@ -31,14 +31,14 @@ def infra_task_ids(run_dir: str) -> list[str]:
 
 
 API_ROUTES = {
-    "deepseek-v4-flash": ("https://api.deepseek.com/v1", "REDACTED-DEEPSEEK-KEY"),
+    "deepseek-v4-flash": ("https://api.deepseek.com/v1", "${DEEPSEEK_API_KEY:?}"),
 }
 
 
 def run_patch(model: str, arm: str, ids: list[str]) -> None:
     out = os.path.join(BENCH, "runs", f"{model}-{arm}-patch")
     api_base, api_key = API_ROUTES.get(
-        model, ("https://dashscope.aliyuncs.com/compatible-mode/v1", "REDACTED-DASHSCOPE-KEY")
+        model, ("https://dashscope.aliyuncs.com/compatible-mode/v1", "${DASHSCOPE_API_KEY:?}")
     )
     env = os.environ.copy()
     env["DASHSCOPE_API_KEY"] = api_key

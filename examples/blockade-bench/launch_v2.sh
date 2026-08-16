@@ -1,7 +1,7 @@
 #!/bin/bash
 export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PYTHONPATH=/opt/dsh-agent
-export DASHSCOPE_API_KEY=REDACTED-DASHSCOPE-KEY
+: "${DASHSCOPE_API_KEY:?export DASHSCOPE_API_KEY first}"
 
 mkdir -p /root/bench-logs
 

@@ -16,9 +16,9 @@ BENCH = r"D:\AgenticSyS\bench"
 RUNNER = os.path.join(BENCH, "automationbench")
 
 RUNS = [
-    ("qwen3.7-max", "clean", "https://dashscope.aliyuncs.com/compatible-mode/v1", "REDACTED-DASHSCOPE-KEY"),
-    ("qwen3.7-max", "guard", "http://127.0.0.1:8787/v1", "REDACTED-DASHSCOPE-KEY"),
-    ("deepseek-v4-flash", "guard", "http://127.0.0.1:8788/v1", "REDACTED-DEEPSEEK-KEY"),
+    ("qwen3.7-max", "clean", "https://dashscope.aliyuncs.com/compatible-mode/v1", "${DASHSCOPE_API_KEY:?}"),
+    ("qwen3.7-max", "guard", "http://127.0.0.1:8787/v1", "${DASHSCOPE_API_KEY:?}"),
+    ("deepseek-v4-flash", "guard", "http://127.0.0.1:8788/v1", "${DEEPSEEK_API_KEY:?}"),
 ]
 
 

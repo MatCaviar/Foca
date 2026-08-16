@@ -20,12 +20,12 @@ NUM = os.environ.get("AB_NUM", "50")
 
 RUNS = [
     # (model, arm, upstream_key, profile, port)
-    ("qwen3.7-max", "clean", "REDACTED-DASHSCOPE-KEY", None, None),
-    ("qwen3.7-max", "guard", "REDACTED-DASHSCOPE-KEY", "full", 8787),
-    ("qwen3.6-flash", "clean", "REDACTED-DASHSCOPE-KEY", None, None),
-    ("qwen3.6-flash", "guard", "REDACTED-DASHSCOPE-KEY", "lite", 8789),
-    ("deepseek-v4-flash", "clean", "REDACTED-DEEPSEEK-KEY", None, None),
-    ("deepseek-v4-flash", "guard", "REDACTED-DEEPSEEK-KEY", "lite", 8788),
+    ("qwen3.7-max", "clean", "${DASHSCOPE_API_KEY:?}", None, None),
+    ("qwen3.7-max", "guard", "${DASHSCOPE_API_KEY:?}", "full", 8787),
+    ("qwen3.6-flash", "clean", "${DASHSCOPE_API_KEY:?}", None, None),
+    ("qwen3.6-flash", "guard", "${DASHSCOPE_API_KEY:?}", "lite", 8789),
+    ("deepseek-v4-flash", "clean", "${DEEPSEEK_API_KEY:?}", None, None),
+    ("deepseek-v4-flash", "guard", "${DEEPSEEK_API_KEY:?}", "lite", 8788),
 ]
 
 DASHSCOPE_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"

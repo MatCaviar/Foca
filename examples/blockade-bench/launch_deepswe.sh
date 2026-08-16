@@ -1,7 +1,7 @@
 #!/bin/bash
 export PATH="/root/.local/bin:$PATH"
 export PYTHONPATH="/opt/dsh-agent"
-export DASHSCOPE_API_KEY=REDACTED-DASHSCOPE-KEY
+: "${DASHSCOPE_API_KEY:?export DASHSCOPE_API_KEY first}"
 cd /opt/dsh-agent
 
 run_deepswe() {

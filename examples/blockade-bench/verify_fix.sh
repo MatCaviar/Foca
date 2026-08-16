@@ -1,7 +1,7 @@
 #!/bin/bash
 export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PYTHONPATH=/opt/dsh-agent
-export DASHSCOPE_API_KEY=REDACTED-DASHSCOPE-KEY
+export DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:?}
 export DSH_GUARD=off
 cd /opt/dsh-agent
 rm -rf /root/jobs/verify

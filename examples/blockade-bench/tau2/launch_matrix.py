@@ -25,7 +25,7 @@ def main() -> None:
             out = os.path.join(BENCH, "runs", f"{model}-{arm}")
             log = open(os.path.join(BENCH, "logs", f"{model}-{arm}.log"), "w", encoding="utf-8")
             env = os.environ.copy()
-            env["DASHSCOPE_API_KEY"] = "REDACTED-DASHSCOPE-KEY"
+            env["DASHSCOPE_API_KEY"] = "${DASHSCOPE_API_KEY:?}"
             env["PYTHONUNBUFFERED"] = "1"
             procs.append(
                 (
