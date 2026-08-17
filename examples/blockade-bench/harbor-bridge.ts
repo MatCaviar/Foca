@@ -1,13 +1,7 @@
 /**
- * Harbor bridge: the same stdio JSON protocol as the tau2 bridge, exposed as
- * a general agent-loop bridge for harbor/Terminal-Bench. Tool calls park
- * until the harbor-side environment executes them; every real result flows
- * back through the harness pipeline where the Reframe guard observes it.
- *
- * The tool surface is fixed (run_command/read_file/write_file/list_dir) and
- * the guard families map command-style tools with write semantics
- * (write_file, run_command with mutation verbs) so P5/O3 logic applies to
- * terminal work; guard config: full or lite profiles from GUARD_PROFILE.
+ * Harbor bridge for Terminal-Bench and DeepSWE. Real tool results flow back
+ * through the DeepSeek Harness tool pipeline so Focas observes failures and
+ * injects recovery only when a semantic command family stagnates.
  * @module @deepseek-ai/dsh-blockade-bench
  */
 
@@ -52,34 +46,57 @@ function emit(value: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify(value)}\n`)
 }
 
-/**
- * Reframe directives adapted for terminal work: the carrier vocabulary maps
- * to "who can already do this in the system" (package managers, existing
- * scripts, git, system services), and P5 to stopping doomed command families.
- */
+/** Terminal-specific wording stays concrete and intentionally short. */
 const TERMINAL_DIRECTIVES = {
-  carrier_search: 'The current approach cannot achieve this (command denied, missing tool, or the change had no effect). Do not retry it unchanged or escalate privileges. Search for the CAPABILITY CARRIER — what already in this system can do this: an installed tool or package, an existing script or service, git, a scheduler, a different interpreter or entrypoint? Find the cheapest controllable trigger and go through it. Search for the causal path to the target state, not for the command you first thought of.',
-  p1_dual_path: 'A direct approach just failed. Before the next command, enumerate in parallel: (A) corrected direct routes (fix flags, paths, dependencies), (B) user-equivalent routes — how would the system achieve this effect itself (config reload, service restart, package hook, git workflow)? Pick the cheapest verifiable one.',
-  p3_unverified: 'Several changes were made without verification. Before claiming completion, verify the real effect: run the test suite, re-read the changed file, or check the service state. Do not report success without evidence.',
-  p5_reframe: 'Multiple attempts in one command family have failed. Stop iterating variants. Re-derive the goal from the task description, inspect the actual state (files, logs, versions) instead of assuming, and choose a structurally different approach — or document precisely what blocks completion.',
+  carrier_search: 'This route is denied, missing, or ineffective. Do not rerun it unchanged. Find what already carries the capability: a declared project script, the repository package manager, an installed binary, an existing service, git, or another interpreter/entrypoint. Inspect manifests and command availability, then trigger that carrier and verify the resulting state.',
+  p1_dual_path: 'The direct command failed. Before another attempt, compare two concrete routes: (A) repair the current command from the actual error; (B) use the project or system entrypoint that normally produces the same effect. Choose the cheaper verifiable route.',
+  p3_unverified: 'The command claims success but this deployment requires independent evidence. Verify the artifact, file diff, test result, or service state before reporting completion.',
+  p4_identity_grid: 'The command was denied. Treat the current identity as one option, not the conclusion: check a repository-local/user-space route, an existing service or script, the correct workspace credential, or another already-authorized carrier. Do not retry the denied call unchanged.',
+  p5_reframe: 'This command kind is repeating the same failure without progress. Stop rerunning variants. Read the first unresolved error and current files/logs, make one state-changing correction, then validate once. If the required capability is absent, state the exact missing prerequisite.',
+  target_missing: 'The command or target does not exist. Inspect the project manifest, scripts, PATH, and repository layout to discover the real entrypoint; do not guess another name or path.',
 } as const
 
 const TERMINAL_GUARD_CONFIG: BlockadeGuard.Config = {
+  familyFailureLimit: 3,
+  repeatedFailureLimit: 2,
   families: [
     {
       tools: ['run_command'],
       family: 'shell',
       familyClass: 'direct_write',
       pathClass: 'A_direct',
+      partition: { argument: 'command', mode: 'command_kind' },
+      verification: 'none',
     },
     {
       tools: ['write_file'],
       family: 'file-write',
       familyClass: 'direct_write',
       pathClass: 'A_direct',
+      partition: { argument: 'path', mode: 'path_root' },
+      verification: 'none',
+      progressOnSuccess: true,
     },
   ],
   directives: TERMINAL_DIRECTIVES,
+}
+
+const LITE_GUARD_CONFIG: BlockadeGuard.Config = {
+  ...TERMINAL_GUARD_CONFIG,
+  protocols: {
+    carrierSearch: true,
+    dualPath: false,
+    truthSource: false,
+    identityGrid: false,
+    reframe: true,
+    lessons: false,
+    escalationGuard: false,
+  },
+  directives: {
+    carrier_search: 'Stop retrying that route. Inspect the repository and environment for the existing script, tool, service, package-manager command, or alternate entrypoint that already performs the capability; use it and verify once.',
+    p5_reframe: 'The same command kind is failing again with no successful change in between. Read the first error and actual state, make one structurally different correction, then run one focused validation.',
+    target_missing: 'The target is absent. Discover the declared entrypoint from manifests, scripts, PATH, or repository layout instead of guessing.',
+  },
 }
 
 interface Parked {
@@ -100,7 +117,7 @@ class BridgeSession {
     while (this.usageCursor < events.length) {
       const event = events[this.usageCursor]
       this.usageCursor += 1
-      if (event.type !== 'assistant/message') continue
+      if (event?.type !== 'assistant/message') continue
       const usage = (event as { data?: { usage?: { inputTokens?: number; outputTokens?: number } } }).data?.usage
       if (usage !== undefined) {
         this.inputTokens += usage.inputTokens ?? 0
@@ -111,7 +128,7 @@ class BridgeSession {
   }
 
   async userTurn(text: string): Promise<void> {
-    console.error(`[bridge] userTurn: ${text.slice(0, 60)}...`)
+    console.error(`[bridge] userTurn: ${text.slice(0, 80)}...`)
     this.agent.followup(createUserMessage({
       content: [{ type: 'text', text }],
       source: { kind: 'user' },
@@ -124,11 +141,8 @@ class BridgeSession {
     const parked = this.parked.get(callId)
     if (parked === undefined) return
     this.parked.delete(callId)
-    if (isError) {
-      parked.reject(new Error(output.length > 0 ? output.slice(0, 8000) : 'tool call failed'))
-    } else {
-      parked.resolve({ result: output })
-    }
+    if (isError) parked.reject(new Error(output.length > 0 ? output.slice(0, 8000) : 'tool call failed'))
+    else parked.resolve({ result: output })
   }
 
   finalText(): string {
@@ -192,6 +206,11 @@ class BridgeSession {
   }
 }
 
+function positiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
 async function boot(start: StartMessage): Promise<BridgeSession> {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx, {
@@ -201,43 +220,30 @@ async function boot(start: StartMessage): Promise<BridgeSession> {
       includeRuntimeContext: false,
     },
   })
+
+  const baseURL = process.env.DASHSCOPE_BASE_URL?.trim()
+    || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  const contextWindow = positiveInteger(process.env.DSH_CONTEXT_WINDOW, 262144)
+  const maxTokens = positiveInteger(process.env.DSH_MAX_TOKENS, 32768)
   await ctx.plugin(PiAiLlm, {
     providers: {
       dashscope: {
         apiKeyEnv: 'DASHSCOPE_API_KEY',
         api: 'openai-completions',
-        baseURL: process.env.DASHSCOPE_BASE_URL ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        defaultContextWindow: 131072,
-        defaultMaxTokens: 16384,
-        models: [{ id: start.model, name: start.model, contextWindow: 131072, maxTokens: 16384 }],
+        baseURL,
+        defaultContextWindow: contextWindow,
+        defaultMaxTokens: maxTokens,
+        models: [{ id: start.model, name: start.model, contextWindow, maxTokens }],
       },
     },
   })
   await ctx.plugin(AgentLoop, { agents: [] })
-  if (start.guard === true) {
-    await ctx.plugin(BlockadeGuard, TERMINAL_GUARD_CONFIG)
-  } else if (start.guard === 'lite') {
-    await ctx.plugin(BlockadeGuard, {
-      ...TERMINAL_GUARD_CONFIG,
-      protocols: {
-        carrierSearch: true,
-        dualPath: false,
-        truthSource: false,
-        identityGrid: false,
-        reframe: true,
-        lessons: false,
-        escalationGuard: true,
-      },
-      directives: {
-        carrier_search: 'That approach failed (denied, missing, or no effect). Do not retry it unchanged. Find what already works in this system — another tool, an existing script or service, a different route — and go through it.',
-        p5_reframe: 'Repeated failures on the same approach. Stop; inspect the actual state (files/logs/versions), re-derive the goal, and choose a structurally different approach — or document what blocks completion.',
-      },
-    })
-  }
+  if (start.guard === true) await ctx.plugin(BlockadeGuard, TERMINAL_GUARD_CONFIG)
+  else if (start.guard === 'lite') await ctx.plugin(BlockadeGuard, LITE_GUARD_CONFIG)
+
   const agent = ctx.agentLoop.create(SessionId(start.sessionId), { provider: 'dashscope', model: start.model })
-  // Log model request failures for debugging
   ctx.on('agent/request-error', ({ failure }) => {
-    console.error(`[model-error] ${JSON.stringify(failure).slice(0, 300)}`)
+    console.error(`[model-error] ${JSON.stringify(failure).slice(0, 500)}`)
   })
   const session = new BridgeSession(ctx, agent)
   session.registerTools(start.tools)
@@ -262,9 +268,9 @@ async function main(): Promise<void> {
     void (async () => {
       try {
         if (message.type === ('credentials' as never)) {
-          const cred = message as unknown as { apiKey: string; apiBase: string }
-          process.env.DASHSCOPE_API_KEY = cred.apiKey
-          process.env.DASHSCOPE_BASE_URL = cred.apiBase
+          const credentials = message as unknown as { apiKey: string; apiBase: string }
+          process.env.DASHSCOPE_API_KEY = credentials.apiKey
+          process.env.DASHSCOPE_BASE_URL = credentials.apiBase
           emit({ type: 'credentials_ack' })
           return
         }
@@ -273,9 +279,7 @@ async function main(): Promise<void> {
           emit({ type: 'ready' })
           return
         }
-        if (message.type === 'stop') {
-          process.exit(0)
-        }
+        if (message.type === 'stop') process.exit(0)
         if (session === undefined) {
           emit({ type: 'error', message: 'session not started' })
           return
@@ -286,18 +290,14 @@ async function main(): Promise<void> {
           emit({ type: 'final', text: session.finalText(), usage: session.usage() })
           return
         }
-        if (message.type === 'toolResult') {
-          session.resolveTool(message.callId, message.output, message.isError)
-        }
+        if (message.type === 'toolResult') session.resolveTool(message.callId, message.output, message.isError)
       } catch (error: unknown) {
         emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
       }
     })()
   })
 
-  process.stdin.on('end', () => {
-    process.exit(0)
-  })
+  process.stdin.on('end', () => process.exit(0))
 }
 
 void main()

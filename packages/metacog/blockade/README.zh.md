@@ -1,100 +1,103 @@
 # @deepseek-ai/dsh-blockade
 
-[English](README.md) | 中文
+Focas 的运行时插件，用于智能体受阻后的元认知恢复。
 
-封锁守卫：为困在"被封锁写操作"上的 agent 内置元认知。
+该插件把反复无效的行动转化为确定性的恢复行为：分类失败形态、区分声明成功与真实生效、把宽工具划分为语义族、统计连续无进展失败、搜索能力承载者，并且只在跨族突破获得独立验证后沉淀经验。
 
-一个插件把真实 agent 事后复盘中记录的四种卡死机制变成固定的运行时行为：
+## 恢复行为
 
-| 机制（为什么会卡死） | 协议（本插件做什么） |
+| 观测 | 动作 |
 |---|---|
-| 框架锁定：计划只枚举一个语义族，族外知识从不进入搜索空间 | **P1** — 首次直连路径失败注入双路径枚举要求（直接调用 AND 用户等价路径） |
-| 终止性错误归因："permission denied"终结了调查 | **P2** — 每次失败先分类（显式拒绝 / 静默吞掉 / 目标缺失 / 其他）；每类固定下一步动作；被证实的吞掉禁止提权反射 |
-| 信任声明成功：`ok=true` 被当作完成 | **P3** — 映射写操作的声明成功降级为"声明"，经独立探针工具验证，按证据独立性分级；仅有执行器同源回读时保持 `unverified` |
-| 缺少切换触发器：同族变体无限深挖 | **P5** — 同语义族失败达 `familyFailureLimit` 次即暂停深挖，强制双路径枚举 |
-| （机制2延伸）"没权限"遮住了身份栅格 | **P4** — 显式拒绝注入身份维度枚举（进程 uid / 更高 uid / 平台签名 / 特权组件 / 守护进程身份 / 信任边界） |
-| 每次人工提示只花一次 | **P6** — 在其他族类失败后取得验证突破时沉淀经验（`blockade/lesson` 会话事件，仅记日志），部署内后续会话启动时召回 |
+| 第一次直接路径失败 | 同时比较直接路径与用户等价路径 |
+| 明确权限拒绝 | 搜索能力承载者与身份替代项 |
+| 目标缺失 | 发现或恢复所属接口契约 |
+| 声明成功与独立证据冲突 | 标记假成功并切换语义族 |
+| 完全相同的失败重复 | 提前换框 |
+| 同族连续失败且无进展 | 停止深挖并换框 |
+| 跨族突破通过独立验证 | 记录当前恢复回合的经验 |
 
-## 服务
+## 进展感知的能力族
 
-`ctx.blockadeGuard: BlockadeGuard`（键 `blockadeGuard`）提供：
+宽工具需要进一步划分，避免无关尝试共用同一个计数器。当前提供两种内置划分：
 
-- `familyOf(tool)` / `probesFor(tool)` — 解析后的映射；
-- `verifyWrite(exec)` — 为一次已落定的写运行配置的探针，返回分级证据；
-- `ledgerOf(agent)` — 尝试账本（族统计、穷尽标记）；
-- `lessonStore()` — 跨会话经验库。
+- `command_kind`：检查、编辑、测试、构建、安装、版本控制变更、服务操作与一般执行；
+- `path_root`：按首个有效路径组件划分。
+
+能力族可以把成功调用标记为进展。进展会重置当前恢复回合中的陈旧失败串，因此正常的“编辑—测试”循环不会被误判，同时反复无效重试仍会被及时熔断。
 
 ## 配置
 
 ```yaml
 familyFailureLimit: 3
+repeatedFailureLimit: 2
+probeTimeoutMs: 10000
 mode: advisory
 families:
-  - tools: ['car_*_set', 'car_audio_*']
-    family: std-api
+  - tools: [run_command]
+    family: shell
     familyClass: direct_write
     pathClass: A_direct
+    partition:
+      argument: command
+      mode: command_kind
+    verification: none
+
+  - tools: [write_file]
+    family: file-write
+    familyClass: direct_write
+    pathClass: A_direct
+    partition:
+      argument: path
+      mode: path_root
+    verification: none
+    progressOnSuccess: true
+
 probes:
-  - writes: ['car_hvac_set']
+  - writes: [car_hvac_set]
     tool: car_get_hvac
     independence: independent
     argumentMap:
       - { probe: expectTemperature, write: temperature }
-protocols:
-  dualPath: true
-  truthSource: true
-  identityGrid: true
-  reframe: true
-  lessons: true
-  escalationGuard: true
 ```
 
-配置校验在插件加载时失败即报错：空工具列表、未知枚举值、同一族 id 语义冲突、非法阈值、无参数探针行都会抛错。
+### 验证策略
 
-### 探针契约
+- `mapped`（默认）：存在探针映射时才执行独立验证，否则记录透明的 `declared_success`；
+- `required`：缺少确认性证据时仍保持 `unverified`；
+- `none`：该能力族不执行真值源验证。
 
-探针工具接受映射参数（通常是 `expect*` 字段）并返回带可选布尔 `agrees` 与 `observed` 描述的 JSON 值。探针出错只贡献一条无承诺的观测。判定合成是写死的代码：任何不一致即判假成功；只有 `independent` 或 `ground_truth` 级的确认才把声明升级为已验证成功。
+该区分避免通用终端工具在每次成功命令后都产生“未验证”提示，同时保留高责任写操作所需的严格验证。
 
 ### 模式
 
-`advisory` 只注入指令上下文。`enforce` 额外把假成功扣留为 blocked 错误结果，并在任一族出现被吞写之后拒绝 `privilege_shift` 类调用。
+- `advisory`：仅追加恢复上下文；
+- `enforce`：额外扣留已证实的假成功结果，并拒绝已配置的错误提权反射。
+
+## 服务接口
+
+`ctx.blockadeGuard: BlockadeGuard` 提供：
+
+- `familyOf(tool)`：静态映射；
+- `resolveFamily(tool, args)`：具体执行对应的细粒度语义族与进展策略；
+- `probesFor(tool)` / `verifyWrite(exec)`：分级真值源证据；
+- `ledgerOf(agent)`：尝试记录、总失败数、连续失败串与耗尽状态；
+- `lessonStore()`：进程内的已验证经验。
 
 ## 事件
 
-- 消费 `tools/post-execute`（验证、分类、转向）、`tools/pre-execute`（enforce 模式提权拒绝）、`agent/session-start`（经验召回）；
-- 以 `user/message`（source `{ kind: 'plugin', plugin: 'blockade-guard', form: 'notice' }`）发出模型可见的指令上下文；
-- 追加仅记日志的 `blockade/lesson` 会话事件（持久、可重放、不进模型上下文）。
+插件消费 `tools/pre-execute`、`tools/post-execute` 和 `agent/session-start`。所有模型可见提示都记录为来源为 `{ kind: 'plugin', plugin: 'blockade-guard' }` 的 `user/message`；已验证经验追加为仅日志可见的 `blockade/lesson` 事件。
 
-每条指令带稳定机器标记（`[blockade:p2_fake_success]` 等），可供日志、测试与脚本化策略使用。
+## 保证
 
-## 扩展点
+- 通配模式匹配完整工具名，不匹配任意子串；
+- 部署侧提示覆写对 `carrier_search` 等全部提示生效；
+- 目标缺失发出专用 `target_missing`；
+- 换框触发基于连续无进展失败，而不是会话终身累计值；
+- 经验提取不会混入已经完成的旧恢复回合。
 
-新的失败形态、身份维度或指令文本作为数据放在 `src/domain.ts`。域逻辑（分类、判定合成、账本、经验）不依赖 Cordis，任何运行器都可复用。
+## 当前限制
 
-## Model Experience
-
-### Request context and condition
-
-#### What the model sees
-
-协议触发时（判定假成功、未证实声明、显式拒绝、换框阈值、会话启动经验召回），在已落定的工具调用之后追加一条指令上下文。示例原文开头：
-
-##### Directive opening, from `directiveText('p2_fake_success', …)`
-
-```markdown
-[blockade:p2_fake_success] The tool reported success, but independent verification contradicts it: this write was silently swallowed by a policy layer. …
-```
-
-#### Token effect
-
-条件性：无协议触发时为零；每个触发的指令一条有界上下文（按 kind × family 或 tool × agent 限流一次）。
-
-#### KV Cache effect
-
-只追加：指令附加在最新工具结果之后，从不改写更早的请求 token。指令只使其自身之后的新请求失去复用。
-
-## Known Limitations and Deferred Work
-
-- **经验持久化是进程内的** — 存储挂在 `ctx.blockadeGuard`；跨重启持久化与投影折叠（`goal/change` 模式）暂缓。经验仅在单进程内的 agent 重启间存活。
-- **探针参数映射的是写调用参数而非效果** — 验证假定写的参数声明了其预期可观测结果（如按键调用上的 `targetVolume`）。效果不可从参数推导的工具验证为 `unverified`，这是诚实的裁决。
-- **族映射是配置而非发现** — 工具按通配行归入语义族；未映射工具的部署对其透明（不验证、不转向）。
+- 经验存储仍为进程内；
+- 效果验证仍需部署侧提供探针；
+- 命令类型划分有意保持粗粒度，应依据实测失败扩展；
+- enforce 模式下的提权控制仍以当前智能体为全局范围，未明确映射提权工具时应保持关闭。

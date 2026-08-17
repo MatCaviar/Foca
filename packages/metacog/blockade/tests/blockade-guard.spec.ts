@@ -303,7 +303,7 @@ describe('enforce mode', () => {
     ]))
     const results = [...agent.session.events].filter((e): e is SessionEvent<'tool/result'> => e.type === 'tool/result')
     expect(results[0]!.data.message.content[0].isError).toBe(true)
-    expect(results[0]!.data.message.content[0].content).toEqual([{ type: 'text', text: 'blockade-guard: fx_write reported success but independent verification contradicts it; the result is withheld as a fake success.' }])
+    expect(results[0]!.data.message.content[0].content).toEqual([{ type: 'text', text: 'blockade-guard: fx_write reported success but independent verification contradicted it; the result is withheld as a fake success.' }])
     expect(results[1]!.data.message.content[0].isError).toBe(true)
     const suText = JSON.stringify(results[1]!.data.message.content[0].content)
     expect(suText).toContain('escalation policy')

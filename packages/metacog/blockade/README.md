@@ -1,100 +1,103 @@
 # @deepseek-ai/dsh-blockade
 
-English | [中文](README.zh.md)
+Focas runtime plugin for metacognitive recovery from agentic blockade.
 
-Blockade guard: internalized metacognition for agents stuck on blocked writes.
+The package turns repeated ineffective actions into deterministic recovery behavior. It classifies failure forms, distinguishes declared success from verified effect, narrows broad tools into semantic families, tracks consecutive no-progress failures, searches for capability carriers, and commits lessons only after independently verified cross-family breakthroughs.
 
-One plugin turns the four deadlock mechanisms recorded in real agent postmortems into fixed runtime behavior:
+## Recovery behavior
 
-| Mechanism (why agents get stuck) | Protocol (what this plugin does) |
+| Observation | Action |
 |---|---|
-| Frame lock: the plan enumerates one semantic family, so out-of-frame knowledge is never searched | **P1** — the first direct-path failure injects the dual-path enumeration requirement (direct invocation AND user-equivalent paths) |
-| Terminal misattribution: "permission denied" ends the investigation | **P2** — every failure is classified (`explicit_denial` / `silent_swallow` / `target_missing` / other); each form has a fixed next action; a verified swallow forbids the escalation reflex |
-| Trusted declared success: `ok=true` is banked as done | **P3** — declared successes on mapped writes are downgraded to claims and verified through independent probe tools, graded by evidence independence; an actuator-store readback alone stays `unverified` |
-| No switch trigger: same-family variants deepen forever | **P5** — `familyFailureLimit` failures in one family pause deepening and force the dual-path enumeration |
-| (extension of M2) "no permission" hides an identity grid | **P4** — an explicit denial injects the identity-dimension enumeration (process uid / higher uid / platform signature / privileged component / daemon identity / trust boundary) |
-| Every human hint is spent once | **P6** — a verified breakthrough after failures in other family classes commits a lesson (`blockade/lesson` session event, log-only) that later sessions in the deployment recall at start |
+| first direct failure | compare direct and user-equivalent routes |
+| explicit denial | search capability carriers and identity alternatives |
+| target missing | discover or recover the owning contract |
+| success contradicted by independent evidence | mark fake success and switch family |
+| repeated identical failure | early reframe |
+| consecutive same-family failures without progress | stop deepening and reframe |
+| verified cross-family breakthrough | record an episode-scoped lesson |
 
-## Service
+## Progress-aware families
 
-`ctx.blockadeGuard: BlockadeGuard` (key `blockadeGuard`) exposes:
+Broad tools should be partitioned so unrelated attempts do not share a counter. Two built-in partitions are available:
 
-- `familyOf(tool)` / `probesFor(tool)` — the resolved mappings;
-- `verifyWrite(exec)` — run the configured probes for one settled write and return graded evidence;
-- `ledgerOf(agent)` — the attempt ledger (family statistics, exhaustion marks);
-- `lessonStore()` — the cross-session lesson store.
+- `command_kind`: `inspect`, `edit`, `test`, `build`, `install`, `vcs-change`, `service`, or `execute`;
+- `path_root`: the first meaningful path component.
 
-## Config
+A family may mark successful calls as progress. Progress resets stale failure streaks across the current recovery episode, which preserves normal edit–test iteration while still cutting off repeated no-op retries.
+
+## Configuration
 
 ```yaml
 familyFailureLimit: 3
+repeatedFailureLimit: 2
+probeTimeoutMs: 10000
 mode: advisory
 families:
-  - tools: ['car_*_set', 'car_audio_*']
-    family: std-api
+  - tools: [run_command]
+    family: shell
     familyClass: direct_write
     pathClass: A_direct
+    partition:
+      argument: command
+      mode: command_kind
+    verification: none
+
+  - tools: [write_file]
+    family: file-write
+    familyClass: direct_write
+    pathClass: A_direct
+    partition:
+      argument: path
+      mode: path_root
+    verification: none
+    progressOnSuccess: true
+
 probes:
-  - writes: ['car_hvac_set']
+  - writes: [car_hvac_set]
     tool: car_get_hvac
     independence: independent
     argumentMap:
       - { probe: expectTemperature, write: temperature }
-protocols:
-  dualPath: true
-  truthSource: true
-  identityGrid: true
-  reframe: true
-  lessons: true
-  escalationGuard: true
 ```
 
-Validation fails loud at plugin load: empty tool lists, unknown enum values, conflicting semantics for one family id, invalid limits, and probe rows without arguments all throw.
+### Verification policy
 
-### Probe contract
+- `mapped` (default): verify only when a probe mapping exists; otherwise the successful call is transparent `declared_success`;
+- `required`: a successful call without confirming evidence remains `unverified`;
+- `none`: never run truth-source verification for this family.
 
-A probe tool accepts the mapped arguments (typically an `expect*` field) and returns a JSON value with an optional boolean `agrees` plus an `observed` account. An erroring probe contributes an uncommitted observation only. Verdict composition is fixed code: any disagreement rules a fake success; only an `independent` or `ground_truth` confirmation upgrades a claim to verified success.
+This distinction prevents generic terminal tools from generating an unverified warning after every successful command while preserving strict verification where the deployment defines an observable effect.
 
 ### Modes
 
-`advisory` injects directive contexts only. `enforce` additionally withholds a fake success as a blocked error result and denies `privilege_shift` calls once any family had a write swallowed.
+- `advisory`: append recovery contexts only;
+- `enforce`: additionally withhold verified fake-success results and deny the configured escalation reflex.
+
+## Service
+
+`ctx.blockadeGuard: BlockadeGuard` exposes:
+
+- `familyOf(tool)` — static mapping row;
+- `resolveFamily(tool, args)` — concrete partitioned family and progress policy;
+- `probesFor(tool)` / `verifyWrite(exec)` — graded truth-source evidence;
+- `ledgerOf(agent)` — attempts, failure totals, consecutive streaks, and exhaustion;
+- `lessonStore()` — process-local verified lessons.
 
 ## Events
 
-- consumes `tools/post-execute` (verification, classification, steering), `tools/pre-execute` (enforce-mode escalation deny), `agent/session-start` (lesson recall);
-- emits model-visible directive contexts as `user/message` with source `{ kind: 'plugin', plugin: 'blockade-guard', form: 'notice' }`;
-- appends log-only `blockade/lesson` session events (durable, replayable, never model-visible).
+The plugin consumes `tools/pre-execute`, `tools/post-execute`, and `agent/session-start`. Model-visible directives are logged as `user/message` events with source `{ kind: 'plugin', plugin: 'blockade-guard' }`. Verified lessons are appended as log-only `blockade/lesson` events.
 
-Every directive carries a stable machine marker (`[blockade:p2_fake_success]`, …) usable by logs, tests, and scripted policies.
+## Guarantees
 
-## Extension points
+- wildcard mappings match complete tool names, not substrings;
+- deployment directive overrides apply to carrier search and every other directive;
+- a missing target emits `target_missing`, not a generic reframe;
+- family triggers use consecutive no-progress failures, not lifetime totals;
+- lesson extraction ignores failures from earlier completed recovery episodes.
 
-New failure forms, identity dimensions, or directive texts live in `src/domain.ts` as data. Domain logic (classification, verdict composition, ledger, lessons) is Cordis-free and reusable from any runner.
+## Current limits
 
-## Model Experience
-
-### Request context and condition
-
-#### What the model sees
-
-A directive context is appended after a settled tool call when a protocol fires (fake success ruled, unverified claim, explicit denial, reframe threshold, session-start lesson recall). Example verbatim opening:
-
-##### Directive opening, from `directiveText('p2_fake_success', …)`
-
-```markdown
-[blockade:p2_fake_success] The tool reported success, but independent verification contradicts it: this write was silently swallowed by a policy layer. …
-```
-
-#### Token effect
-
-Conditional: zero while no protocol fires; one bounded context per fired directive (throttled once per kind per family or tool per agent).
-
-#### KV Cache effect
-
-Append-only: directives append after the newest tool result and never rewrite earlier request tokens. A directive invalidates reuse only for requests newer than its own append.
-
-## Known Limitations and Deferred Work
-
-- **Lesson persistence is process-local** — the store lives on `ctx.blockadeGuard`; cross-restart persistence and projection folding (the `goal/change` pattern) are deferred. Lessons survive agent restarts within one process only.
-- **Probe arguments map write-call arguments, not effects** — verification presumes the write's arguments declare their intended observable outcome (e.g. a `targetVolume` on a key-event call). Tools whose effect is not derivable from arguments verify as `unverified`, which is the honest ruling.
-- **Family mapping is configuration, not discovery** — tools are assigned semantic families by wildcard rows; a deployment with unmapped tools runs them transparent (no verification, no steering).
+- lesson storage is process-local;
+- effect verification still requires deployment-provided probes;
+- command-kind partitioning is intentionally coarse and should be extended only from measured failure cases;
+- enforce-mode escalation control is global to the live agent and should remain disabled unless the deployment has mapped privilege-shift tools deliberately.
